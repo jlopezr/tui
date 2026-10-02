@@ -5,6 +5,10 @@ Primera prueba del núcleo TUI discutido:
 - C89 para el core.
 - Sin `malloc`: los objetos los proporciona el caller.
 - `TuiControl` como base de `Window`, `Label` y `Button`.
+- `TuiTextArea`: editor multilínea sobre un buffer de la aplicación (`\n` como
+  separador, cursor como offset, sin word wrap), con scrollbars vertical y
+  horizontal automáticos, ratón y modo solo lectura (`tui_textarea_set_readonly`).
+  La demo incluye tres ejemplos.
 - `TuiListBox` con selección por teclado/ratón, activación y type-to-select.
 - La demo muestra Label, Button, CheckBox, RadioButton, Edit, ComboBox y
   ListBox en ventanas separadas, más un ScrollBar vertical y otro horizontal
@@ -65,7 +69,7 @@ make test
 ```
 
 La suite organiza las pruebas por control (`test_listbox.c`, `test_edit.c`,
-`test_button.c`, `test_checkbox.c`, `test_radiobutton.c`, `test_combobox.c`, `test_scrollbar.c`,
+`test_button.c`, `test_checkbox.c`, `test_radiobutton.c`, `test_combobox.c`, `test_scrollbar.c`, `test_textarea.c`,
 `test_window.c`, `test_menu.c`, `test_statusbar.c` y `test_label.c`) y
 `test_core.c` cubre árbol, layout, hit-testing y foco. `test_support.c`
 comparte la consola simulada y los helpers; no requiere ncurses ni una
@@ -89,6 +93,7 @@ perfiles quedan en `coverage/`, que se puede limpiar con `make clean`.
 - `tui.c`: core TUI (árbol, layout, dibujo, foco y dispatch).
 - `tui_unity.c`: agregador opcional para un solo translation unit.
 - `tui_window.c`, `tui_button.c`, `tui_label.c`: controles básicos.
+- `tui_textarea.c`: editor multilínea.
 - `tui_edit.c`, `tui_listbox.c`: controles de edición y lista.
 - `tui_checkbox.c`, `tui_radiobutton.c`, `tui_combobox.c`: selección
   booleana, exclusiva por grupo y desplegable.

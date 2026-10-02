@@ -16,6 +16,7 @@ typedef struct TuiWindow TuiWindow;
 typedef struct TuiLabel TuiLabel;
 typedef struct TuiButton TuiButton;
 typedef struct TuiEdit TuiEdit;
+typedef struct TuiTextArea TuiTextArea;
 typedef struct TuiListBox TuiListBox;
 typedef struct TuiCheckBox TuiCheckBox;
 typedef struct TuiRadioButton TuiRadioButton;
@@ -490,6 +491,26 @@ void tui_edit_set_text(TuiEdit *edit,
 const char *tui_edit_get_text(TuiEdit *edit);
 
 /*
+ * Text area: simple multiline editor over an application buffer.
+ * Lines are separated by '\n'; scroll bars appear automatically.
+ */
+void tui_textarea_init(TuiTextArea *area,
+                       int x,
+                       int y,
+                       int width,
+                       int height,
+                       char *buffer,
+                       int capacity);
+
+void tui_textarea_set_text(TuiTextArea *area,
+                           const char *text);
+
+const char *tui_textarea_get_text(const TuiTextArea *area);
+
+/* A read-only text area can be navigated and scrolled, not edited. */
+void tui_textarea_set_readonly(TuiTextArea *area, int readonly);
+
+/*
  * ------------------------------------------------------------
  * Menus
  * ------------------------------------------------------------
@@ -582,6 +603,27 @@ struct TuiEdit {
     int length;
     int cursor;
     int offset;
+};
+
+struct TuiTextArea {
+    TuiControl control;
+
+    char *text;
+    int capacity;
+
+    /* Offset of the cursor inside text; line/column are derived. */
+    int cursor_pos;
+    int top_line;
+    int left_col;
+    int readonly;
+
+    /* Size seen by the last sync, to detect resizes. */
+    int last_width;
+    int last_height;
+
+    /* Internal scroll bars, hidden children shown on demand. */
+    TuiScrollBar vscroll;
+    TuiScrollBar hscroll;
 };
 
 /*

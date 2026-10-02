@@ -47,5 +47,6 @@ void test_checkbox_suite(void);
 void test_radiobutton_suite(void);
 void test_combobox_suite(void);
 void test_scrollbar_suite(void);
+void test_textarea_suite(void);
 
 #endif

@@ -81,6 +81,8 @@ typedef struct App {
     TuiWindow button_window;
     TuiWindow edit_window;
     TuiWindow list_window;
+    TuiWindow note_window;
+    TuiWindow code_window;
 
     TuiLabel label;
     TuiButton button;
@@ -95,6 +97,12 @@ typedef struct App {
     TuiListBox listbox;
     TuiListBox scroll_list;
     TuiListBox short_list;
+    char note_buffer[256];
+    TuiTextArea note_area;
+    char code_buffer[1024];
+    TuiTextArea code_area;
+    char help_buffer[256];
+    TuiTextArea help_area;
     TuiScrollBar vscroll;
     TuiScrollBar hscroll;
     TuiLabel vscroll_label;
@@ -225,6 +233,11 @@ static void note_control_event(App *app, TuiEvent *event)
              control == &app->short_list.control)
         tui_statusbar_set_text(&app->status_bar,
                                "Control: ListBox");
+    else if (control == &app->note_area.control ||
+             control == &app->code_area.control ||
+             control == &app->help_area.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: TextArea");
     else if (control == &app->button.control)
         tui_statusbar_set_text(&app->status_bar,
                                "Control: Button");
@@ -241,7 +254,9 @@ static void note_control_event(App *app, TuiEvent *event)
     else if (control == &app->label_window.control ||
              control == &app->button_window.control ||
              control == &app->edit_window.control ||
-             control == &app->list_window.control)
+             control == &app->list_window.control ||
+             control == &app->note_window.control ||
+             control == &app->code_window.control)
         tui_statusbar_set_text(&app->status_bar,
                                "Window: drag title to move");
 }
@@ -265,17 +280,22 @@ static void demo_build_controls(App *app)
     tui_window_set_flags(&app->button_window,
                          TUI_WINDOW_TITLE_LEFT);
     app->button_window.control.attr = TUI_ATTR(TUI_BLACK, TUI_CYAN);
-    tui_window_init(&app->edit_window, 0, 9, 25, 8, "Edit");
+    tui_window_init(&app->edit_window, 0, 8, 25, 8, "Edit");
     app->edit_window.control.attr = TUI_ATTR(TUI_BLACK, TUI_YELLOW);
     tui_window_set_flags(&app->edit_window,
                          TUI_WINDOW_ACTIVE_DOUBLE |
                          TUI_WINDOW_TITLE_CENTER);
-    tui_window_init(&app->list_window, 26, 9, 25, 8, "ListBox");
+    tui_window_init(&app->list_window, 26, 8, 25, 8, "ListBox");
     app->list_window.control.attr = TUI_ATTR(TUI_WHITE, TUI_RED);
     tui_window_set_flags(&app->list_window,
                          TUI_WINDOW_FIXED |
                          TUI_WINDOW_ACTIVE_DOUBLE |
                          TUI_WINDOW_TITLE_RIGHT);
+
+    tui_window_init(&app->note_window, 0, 16, 25, 5, "TextArea");
+    app->note_window.control.attr = TUI_ATTR(TUI_BLACK, TUI_LIGHTGRAY);
+    tui_window_init(&app->code_window, 26, 16, 25, 5, "Scrolling");
+    app->code_window.control.attr = TUI_ATTR(TUI_WHITE, TUI_BLUE);
 
     tui_label_init(&app->label, 1, 2, "A simple text label");
 
@@ -313,6 +333,39 @@ static void demo_build_controls(App *app)
                       scroll_items, 20);
     tui_combobox_set_scrollbar(&app->scroll_combo, 1);
 
+    app->note_buffer[0] = '\0';
+    tui_textarea_init(&app->note_area, 0, 0, 23, 3,
+                      app->note_buffer,
+                      (int)sizeof(app->note_buffer));
+    tui_textarea_set_text(&app->note_area,
+                          "Hello world\n"
+                          "This is a multiline\n"
+                          "editable text area.");
+
+    app->code_buffer[0] = '\0';
+    tui_textarea_init(&app->code_area, 0, 0, 23, 3,
+                      app->code_buffer,
+                      (int)sizeof(app->code_buffer));
+    tui_textarea_set_text(&app->code_area,
+        "10 PRINT \"A long line that needs horizontal scrolling\"\n"
+        "20 FOR I = 1 TO 10\n"
+        "30   PRINT I\n"
+        "40 NEXT I\n"
+        "50 REM The vertical bar\n"
+        "60 REM appears when there\n"
+        "70 REM are more lines\n"
+        "80 END");
+
+    app->help_buffer[0] = '\0';
+    tui_textarea_init(&app->help_area, 0, 17, 13, 4,
+                      app->help_buffer,
+                      (int)sizeof(app->help_buffer));
+    tui_textarea_set_text(&app->help_area,
+                          "Read-only text.\nArrows and the\n"
+                          "mouse scroll it.\nNothing can be\n"
+                          "edited here.");
+    tui_textarea_set_readonly(&app->help_area, 1);
+
     tui_listbox_init(&app->listbox, 1, 1, 21, 5,
                      demo_items, 10);
     tui_listbox_set_command(&app->listbox, CMD_LIST_OPEN);
@@ -341,6 +394,8 @@ static void demo_build_controls(App *app)
     tui_add(&app->workspace.control, &app->button_window.control);
     tui_add(&app->workspace.control, &app->edit_window.control);
     tui_add(&app->workspace.control, &app->list_window.control);
+    tui_add(&app->workspace.control, &app->note_window.control);
+    tui_add(&app->workspace.control, &app->code_window.control);
 
     tui_add(&app->label_window.control, &app->label.control);
     tui_add(&app->label_window.control, &app->mouse_checkbox.control);
@@ -353,6 +408,8 @@ static void demo_build_controls(App *app)
             &app->optimization_combo.control);
     tui_add(&app->edit_window.control, &app->scroll_combo.control);
     tui_add(&app->list_window.control, &app->listbox.control);
+    tui_add(&app->note_window.control, &app->note_area.control);
+    tui_add(&app->code_window.control, &app->code_area.control);
 
     tui_add(&app->left.control, &app->scroll_list.control);
     tui_add(&app->left.control, &app->short_list.control);
@@ -361,6 +418,7 @@ static void demo_build_controls(App *app)
     tui_add(&app->right.control, &app->vscroll_label.control);
     tui_add(&app->right.control, &app->hscroll.control);
     tui_add(&app->right.control, &app->hscroll_label.control);
+    tui_add(&app->right.control, &app->help_area.control);
 }
 
 static void demo_build_layout(App *app)
@@ -485,6 +543,8 @@ static void demo_hide_active(App *app)
         app->button_window.dragging = 0;
         app->edit_window.dragging = 0;
         app->list_window.dragging = 0;
+        app->note_window.dragging = 0;
+        app->code_window.dragging = 0;
         app->button.pressed = 0;
         tui_remove(&app->left.control);
         tui_remove(&app->right.control);

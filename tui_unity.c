@@ -14,6 +14,7 @@
 #include "tui_radiobutton.c"
 #include "tui_combobox.c"
 #include "tui_scrollbar.c"
+#include "tui_textarea.c"
 
 #if defined(TUI_BACKEND_NCURSES)
     #include "console_ncurses.c"
