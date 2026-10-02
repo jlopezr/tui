@@ -6,6 +6,8 @@ Primera prueba del núcleo TUI discutido:
 - Sin `malloc`: los objetos los proporciona el caller.
 - `TuiControl` como base de `Window`, `Label` y `Button`.
 - `TuiListBox` con selección por teclado/ratón, activación y type-to-select.
+- La demo muestra Label, Button, Edit y ListBox en ventanas separadas; el
+  StatusBar muestra el último comando o el control con el que se interactuó.
 - Vtable (`TuiClass`) compartida por tipo.
 - Árbol intrusivo de controles.
 - Coordenadas de hijos relativas al área cliente de la ventana.
@@ -25,6 +27,18 @@ make
 ./demo
 ```
 
+El build habitual compila los módulos en translation units separadas. Para
+compiladores sin linker que necesiten una sola unidad de traducción:
+
+```sh
+make unity
+./demo-unity
+```
+
+`tui_unity.c` agrega los mismos módulos y selecciona el backend igual que el
+build normal. El target actual de unity usa ncurses; para LCC se necesita
+seleccionar/proporcionar el backend compatible con ese target.
+
 Si el enlazador no encuentra ncurses, instala ncurses con tu gestor habitual
 o ajusta `LDLIBS`/rutas en el Makefile.
 
@@ -34,12 +48,14 @@ o ajusta `LDLIBS`/rutas en el Makefile.
 make test
 ```
 
-La suite prueba `TuiListBox` y `TuiEdit` contra una consola simulada, sin
-requerir ncurses ni una terminal interactiva. Se compila con los mismos
+La suite organiza las pruebas por control (`test_listbox.c`, `test_edit.c`,
+`test_button.c`, `test_window.c`, `test_menu.c`, `test_statusbar.c` y
+`test_label.c`). `test_support.c` comparte la consola simulada y los helpers;
+no requiere ncurses ni una terminal interactiva. Se compila con los mismos
 flags C89 estrictos que el resto del proyecto.
 
-Para generar un informe de cobertura de líneas del core (`tui.c`) con LLVM.
-El informe excluye el código de los tests y los headers:
+Para generar un informe de cobertura de líneas del core y los controles con
+LLVM. El informe excluye los ficheros de tests y los headers:
 
 ```sh
 make coverage
@@ -51,11 +67,18 @@ perfiles quedan en `coverage/`, que se puede limpiar con `make clean`.
 ## Estructura
 
 - `tui.h`: API y estructuras públicas.
-- `tui.c`: core TUI; no contiene ncurses.
+- `tui_internal.h`: declaraciones compartidas sólo por la implementación.
+- `tui.c`: core TUI (árbol, layout, dibujo, foco y dispatch).
+- `tui_unity.c`: agregador opcional para un solo translation unit.
+- `tui_window.c`, `tui_button.c`, `tui_label.c`: controles básicos.
+- `tui_edit.c`, `tui_listbox.c`: controles de edición y lista.
+- `tui_menu.c`: MenuBar y PopupMenu.
+- `tui_statusbar.c`: StatusBar.
 - `console.h`: contrato del backend.
 - `console_ncurses.c`: backend de PC/macOS.
-- `demo.c`: ejemplo.
-- `test/test_controls.c`: pruebas unitarias de los controles.
+- `demo.c`: punto de entrada y aplicación de ejemplo.
+- `test/test_*.c`: pruebas unitarias separadas por control.
+- `test/test_support.c`, `test/test_support.h`: consola simulada y helpers.
 - `Makefile`: build.
 
 El siguiente backend puede ser `console_mmio.c`, implementando exactamente

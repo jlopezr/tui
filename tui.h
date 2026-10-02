@@ -420,6 +420,19 @@ typedef struct TuiStatusBar {
     const char *status;
 } TuiStatusBar;
 
+void tui_menubar_init(TuiMenuBar *bar,
+                      TuiMenu *menus,
+                      int count);
+
+void tui_menubar_activate(TuiMenuBar *bar);
+
+void tui_statusbar_init(TuiStatusBar *bar,
+                        TuiStatusItem *items,
+                        int count);
+
+void tui_statusbar_set_text(TuiStatusBar *bar,
+                            const char *text);
+
 /*
  * ------------------------------------------------------------
  * Edit

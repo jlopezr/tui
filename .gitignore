@@ -1,4 +1,5 @@
 demo
+/demo-unity
 *.o
 test/test_controls
 /coverage/

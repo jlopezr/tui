@@ -1,6 +1,9 @@
 #include <stdio.h>
+#include <sys/time.h>
 #include <ncurses.h>
 #include "console.h"
+
+#define TUI_MOUSE_DOUBLE_CLICK_MS 200
 
 static int tui_colors;
 
@@ -8,6 +11,47 @@ static int tui_mouse_x;
 static int tui_mouse_y;
 static int tui_mouse_action;
 static int tui_mouse_buttons;
+static int tui_mouse_left_pressed;
+static int tui_mouse_left_moved;
+static int tui_mouse_press_x;
+static int tui_mouse_press_y;
+static int tui_mouse_press_time_valid;
+static struct timeval tui_mouse_press_time;
+static int tui_mouse_last_click_valid;
+static int tui_mouse_last_click_x;
+static int tui_mouse_last_click_y;
+static struct timeval tui_mouse_last_click_time;
+
+static long tui_mouse_elapsed_ms(struct timeval *later,
+                                 struct timeval *earlier)
+{
+    return (long)(later->tv_sec - earlier->tv_sec) * 1000L +
+           (long)(later->tv_usec - earlier->tv_usec) / 1000L;
+}
+
+static int tui_mouse_is_double_click(int x, int y)
+{
+    struct timeval now;
+    long elapsed_ms;
+
+    if (!tui_mouse_last_click_valid ||
+        x != tui_mouse_last_click_x ||
+        y != tui_mouse_last_click_y)
+        return 0;
+
+    if (gettimeofday(&now, 0) != 0) {
+        tui_mouse_last_click_valid = 0;
+        return 0;
+    }
+
+    elapsed_ms = tui_mouse_elapsed_ms(
+        &now, &tui_mouse_last_click_time);
+
+    tui_mouse_last_click_valid = 0;
+
+    return elapsed_ms >= 0 &&
+           elapsed_ms <= TUI_MOUSE_DOUBLE_CLICK_MS;
+}
 
 int tui_console_init(void)
 {
@@ -15,6 +59,10 @@ int tui_console_init(void)
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
+    tui_mouse_left_pressed = 0;
+    tui_mouse_left_moved = 0;
+    tui_mouse_press_time_valid = 0;
+    tui_mouse_last_click_valid = 0;
 
     tui_colors = 0;
 
@@ -29,14 +77,21 @@ int tui_console_init(void)
          */
     }
 
-    mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, NULL);
-    mouseinterval(200);
+    mousemask(BUTTON1_PRESSED |
+              BUTTON1_RELEASED |
+              BUTTON2_PRESSED |
+              BUTTON2_RELEASED |
+              BUTTON3_PRESSED |
+              BUTTON3_RELEASED |
+              REPORT_MOUSE_POSITION,
+              NULL);
+    mouseinterval(0);
 
     /*
-     * Ask xterm-like terminals for any-motion reporting; some
-     * ncurses versions only enable button events themselves.
+     * Track motion while a button is held without delaying the
+     * press event to resolve clicks.
      */
-    putp("\033[?1003h");
+    putp("\033[?1002h");
     fflush(stdout);
 
     curs_set(0);
@@ -46,7 +101,10 @@ int tui_console_init(void)
 
 void tui_console_shutdown(void)
 {
-    putp("\033[?1003l");
+    tui_mouse_left_pressed = 0;
+    tui_mouse_press_time_valid = 0;
+    tui_mouse_last_click_valid = 0;
+    putp("\033[?1002l");
     fflush(stdout);
     endwin();
 }
@@ -167,6 +225,8 @@ static int tui_translate_mouse(void)
 {
     MEVENT ev;
     int changed;
+    long elapsed_ms;
+    struct timeval now;
 
     if (getmouse(&ev) != OK)
         return 0;
@@ -177,18 +237,44 @@ static int tui_translate_mouse(void)
     tui_mouse_buttons = 0;
     changed = 0;
 
-#ifdef BUTTON1_DOUBLE_CLICKED
-    if (ev.bstate & BUTTON1_DOUBLE_CLICKED) {
-        tui_mouse_action = TUI_MOUSE_DOUBLE;
-        changed = TUI_MOUSE_LEFT;
-    } else
-#endif
     if (ev.bstate & BUTTON1_PRESSED) {
-        tui_mouse_action = TUI_MOUSE_DOWN;
+        tui_mouse_action =
+            tui_mouse_is_double_click(ev.x, ev.y)
+                ? TUI_MOUSE_DOUBLE
+                : TUI_MOUSE_DOWN;
         changed = TUI_MOUSE_LEFT;
+        tui_mouse_left_pressed = 1;
+        tui_mouse_left_moved = 0;
+        tui_mouse_press_x = ev.x;
+        tui_mouse_press_y = ev.y;
+        tui_mouse_press_time_valid =
+            gettimeofday(&tui_mouse_press_time, 0) == 0;
     } else if (ev.bstate & BUTTON1_RELEASED) {
         tui_mouse_action = TUI_MOUSE_UP;
         changed = TUI_MOUSE_LEFT;
+        if (tui_mouse_left_pressed &&
+            !tui_mouse_left_moved &&
+            ev.x == tui_mouse_press_x &&
+            ev.y == tui_mouse_press_y &&
+            tui_mouse_press_time_valid &&
+            gettimeofday(&now, 0) == 0) {
+            elapsed_ms =
+                tui_mouse_elapsed_ms(&now, &tui_mouse_press_time);
+
+            if (elapsed_ms >= 0 &&
+                elapsed_ms <= TUI_MOUSE_DOUBLE_CLICK_MS) {
+                tui_mouse_last_click_time = now;
+                tui_mouse_last_click_valid = 1;
+                tui_mouse_last_click_x = ev.x;
+                tui_mouse_last_click_y = ev.y;
+            } else {
+                tui_mouse_last_click_valid = 0;
+            }
+        } else {
+            tui_mouse_last_click_valid = 0;
+        }
+        tui_mouse_left_pressed = 0;
+        tui_mouse_press_time_valid = 0;
     } else if (ev.bstate & BUTTON3_PRESSED) {
         tui_mouse_action = TUI_MOUSE_DOWN;
         changed = TUI_MOUSE_RIGHT;
@@ -201,6 +287,13 @@ static int tui_translate_mouse(void)
     } else if (ev.bstate & BUTTON2_RELEASED) {
         tui_mouse_action = TUI_MOUSE_UP;
         changed = TUI_MOUSE_MIDDLE;
+#ifdef REPORT_MOUSE_POSITION
+    } else if (ev.bstate & REPORT_MOUSE_POSITION) {
+        if (tui_mouse_left_pressed &&
+            (ev.x != tui_mouse_press_x ||
+             ev.y != tui_mouse_press_y))
+            tui_mouse_left_moved = 1;
+#endif
     }
 
     tui_mouse_buttons = changed;
