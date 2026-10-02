@@ -10,6 +10,11 @@
 #define TUI_KEY_DOWN       0x111
 #define TUI_KEY_LEFT       0x112
 #define TUI_KEY_RIGHT      0x113
+#define TUI_KEY_HOME       0x114
+#define TUI_KEY_END        0x115
+#define TUI_KEY_DELETE     0x116
+#define TUI_KEY_INSERT     0x117
+#define TUI_KEY_BACKSPACE  0x118
 
 /* Returned by tui_console_key(); details via tui_console_mouse(). */
 #define TUI_KEY_MOUSE      0x130
@@ -71,8 +76,8 @@ int  tui_console_key(void);
 
 /*
  * Fetches the mouse event announced by TUI_KEY_MOUSE.
- * Coordinates are screen cells. For DOWN/UP, buttons is the
- * button that changed; for MOVE, the buttons currently held.
+ * Coordinates are screen cells. buttons is the button that
+ * changed in a DOWN/UP event, and 0 for MOVE.
  */
 void tui_console_mouse(int *x, int *y, int *action, int *buttons);
 void tui_console_cursor(int x, int y, int visible);

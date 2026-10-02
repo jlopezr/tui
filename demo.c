@@ -28,21 +28,10 @@ typedef struct App {
     TuiWindow win_a;
     TuiWindow win_b;
 
+    char edit_buffer[64];
+    TuiEdit edit;
+
 } App;
-
-/* TEMP cursor test: remove after verifying. */
-static int test_cx = 1;
-static int test_cy = 1;
-static int test_on = 1;
-
-static void test_draw(TuiControl *control, TuiDraw *draw)
-{
-    (void)control;
-    if (test_on)
-        tui_draw_cursor(draw, test_cx, test_cy);
-}
-
-static const TuiClass test_class = { test_draw, 0 };
 
 typedef void (*CommandFn)(App *app);
 
@@ -289,18 +278,29 @@ int main(void)
     app.win_b.control.attr = TUI_ATTR(TUI_BLACK, TUI_GREEN);
     tui_add(&app.desktop.control, &app.win_a.control);
     tui_add(&app.desktop.control, &app.win_b.control);
+    tui_add(&app.win_a.control, &app.ok.control);
+    tui_add(&app.win_a.control, &app.label.control);
+    app.ok.control.x = 2; app.ok.control.y = 1;
+    app.label.control.x = 2; app.label.control.y = 3;
 
-    /* TEMP: h/j/k/l move cursor, c toggles it. */
-    tui_label_init(&app.test, 2, 2, "cursor test (hjkl, c)");
-    app.test.control.cls = &test_class;
-    tui_add(&app.workspace.control, &app.test.control);
+    tui_edit_init(
+        &app.edit,
+        2, 4,
+        20,
+        app.edit_buffer,
+        sizeof(app.edit_buffer));
 
-    /*
-     * Initial focus.
-     */
+    tui_add(
+        &app.win_b.control,
+        &app.edit.control);
+
+    tui_edit_set_text(
+        &app.edit,
+        "Hola mundo");
+
     tui_desktop_set_focus(
         &app.desktop,
-        &app.ok.control);
+        &app.edit.control);
 
     /*
      * Main loop.
@@ -313,19 +313,9 @@ int main(void)
 
         tui_read_event(&event);
 
-        /* TEMP cursor test keys. */
-        if (event.type == TUI_EV_KEY) {
-            if (event.key == 'h') --test_cx;
-            if (event.key == 'l') ++test_cx;
-            if (event.key == 'k') --test_cy;
-            if (event.key == 'j') ++test_cy;
-            if (event.key == 'c') test_on = !test_on;
-        }
-
         if (event.type == TUI_EV_KEY &&
             event.key == TUI_KEY_ESCAPE &&
             app.desktop.capture == 0) {
-
                 app.running = 0;
 
         } else {

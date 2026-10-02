@@ -8,7 +8,6 @@ static int tui_mouse_x;
 static int tui_mouse_y;
 static int tui_mouse_action;
 static int tui_mouse_buttons;
-static int tui_mouse_held;
 
 int tui_console_init(void)
 {
@@ -181,31 +180,24 @@ static int tui_translate_mouse(void)
     if (ev.bstate & BUTTON1_PRESSED) {
         tui_mouse_action = TUI_MOUSE_DOWN;
         changed = TUI_MOUSE_LEFT;
-        tui_mouse_held |= changed;
     } else if (ev.bstate & BUTTON1_RELEASED) {
         tui_mouse_action = TUI_MOUSE_UP;
         changed = TUI_MOUSE_LEFT;
-        tui_mouse_held &= ~changed;
     } else if (ev.bstate & BUTTON3_PRESSED) {
         tui_mouse_action = TUI_MOUSE_DOWN;
         changed = TUI_MOUSE_RIGHT;
-        tui_mouse_held |= changed;
     } else if (ev.bstate & BUTTON3_RELEASED) {
         tui_mouse_action = TUI_MOUSE_UP;
         changed = TUI_MOUSE_RIGHT;
-        tui_mouse_held &= ~changed;
     } else if (ev.bstate & BUTTON2_PRESSED) {
         tui_mouse_action = TUI_MOUSE_DOWN;
         changed = TUI_MOUSE_MIDDLE;
-        tui_mouse_held |= changed;
     } else if (ev.bstate & BUTTON2_RELEASED) {
         tui_mouse_action = TUI_MOUSE_UP;
         changed = TUI_MOUSE_MIDDLE;
-        tui_mouse_held &= ~changed;
     }
 
-    tui_mouse_buttons =
-        changed != 0 ? changed : tui_mouse_held;
+    tui_mouse_buttons = changed;
 
     return 1;
 }
@@ -268,7 +260,23 @@ int tui_console_key(void)
     case KEY_F(10): return TUI_KEY_F10;
     case KEY_F(11): return TUI_KEY_F11;
     case KEY_F(12): return TUI_KEY_F12;
+    case KEY_HOME:
+        return TUI_KEY_HOME;
 
+    case KEY_END:
+        return TUI_KEY_END;
+
+    case KEY_DC:
+        return TUI_KEY_DELETE;
+
+    case KEY_IC:
+        return TUI_KEY_INSERT;
+
+    case KEY_BACKSPACE:
+    case 127:
+    case 8:
+
+        return TUI_KEY_BACKSPACE;
 
     default:
         return ch;

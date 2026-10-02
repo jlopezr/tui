@@ -342,6 +342,9 @@ static int  menubar_event(TuiControl *control, TuiEvent *event);
 static void statusbar_draw(TuiControl *control, TuiDraw *draw);
 static int  statusbar_event(TuiControl *control, TuiEvent *event);
 
+static void edit_draw(TuiControl *control, TuiDraw *draw);
+static int edit_event(TuiControl *control, TuiEvent *event);
+
 static const TuiClass desktop_class = {
     desktop_draw,
     desktop_event
@@ -375,6 +378,11 @@ static const TuiClass popup_class = {
 static const TuiClass statusbar_class = {
     statusbar_draw,
     statusbar_event
+};
+
+static const TuiClass edit_class = {
+    edit_draw,
+    edit_event
 };
 
 /*
@@ -740,18 +748,64 @@ static void button_draw(TuiControl *control, TuiDraw *draw)
              attr);
 }
 
+/* Shared by keyboard and mouse activation. */
+static int tui_button_command(TuiButton *button,
+                              TuiControl *control,
+                              TuiEvent *event)
+{
+    event->type = TUI_EV_COMMAND;
+    event->command = button->command;
+    event->source = control;
+
+    return 1;
+}
+
 static int button_event(TuiControl *control, TuiEvent *event)
 {
     TuiButton *button;
+    TuiDesktop *desktop;
+    int lx;
+    int ly;
+    int inside;
 
     button = (TuiButton *)control;
 
     if (event->type == TUI_EV_KEY &&
-        event->key == TUI_KEY_ENTER) {
+        event->key == TUI_KEY_ENTER)
+        return tui_button_command(button, control, event);
 
-        event->type = TUI_EV_COMMAND;
-        event->command = button->command;
-        event->source = control;
+    if (event->type != TUI_EV_MOUSE ||
+        !(event->mouse_buttons & TUI_MOUSE_LEFT))
+        return 0;
+
+    desktop = tui_find_desktop(control);
+
+    if (desktop == 0)
+        return 0;
+
+    /* The button keeps capture between DOWN and UP. */
+    if (event->mouse_action == TUI_MOUSE_DOWN) {
+        button->pressed = 1;
+        tui_desktop_set_capture(desktop, control);
+        return 1;
+    }
+
+    if (event->mouse_action == TUI_MOUSE_UP && button->pressed) {
+        button->pressed = 0;
+
+        if (desktop->capture == control)
+            tui_desktop_clear_capture(desktop);
+
+        tui_control_screen_to_local(control,
+                                    event->mouse_x,
+                                    event->mouse_y,
+                                    &lx, &ly);
+
+        inside = lx >= 0 && lx < control->width &&
+                 ly >= 0 && ly < control->height;
+
+        if (inside)
+            return tui_button_command(button, control, event);
 
         return 1;
     }
@@ -776,6 +830,7 @@ void tui_button_init(TuiButton *button,
 
     button->text = text;
     button->command = command;
+    button->pressed = 0;
 }
 
 /*
@@ -953,16 +1008,154 @@ static void popup_draw(TuiControl *control, TuiDraw *draw)
 static void tui_menubar_close(TuiMenuBar *bar);
 static void tui_menubar_open(TuiMenuBar *bar);
 static void tui_menubar_select(TuiMenuBar *bar, int index);
+static int tui_menubar_item_x(TuiMenuBar *bar, int index);
 
+/*
+ * Menu title under screen (x,y), or -1.
+ * Uses the same geometry as menubar_draw().
+ */
+static int tui_menubar_hit(TuiMenuBar *bar,
+                           int screen_x, int screen_y)
+{
+    int lx;
+    int ly;
+    int i;
+    int x0;
+
+    tui_control_screen_to_local(&bar->control,
+                                screen_x, screen_y,
+                                &lx, &ly);
+
+    if (ly != 0)
+        return -1;
+
+    for (i = 0; i < bar->count; ++i) {
+        x0 = tui_menubar_item_x(bar, i);
+
+        if (lx >= x0 &&
+            lx < x0 + tui_strlen(bar->menus[i].text) + 2)
+            return i;
+    }
+
+    return -1;
+}
+
+/*
+ * Item under screen (x,y), or -1 (outside, border, no item).
+ */
+static int tui_popup_hit_item(TuiPopupMenu *popup,
+                              int screen_x, int screen_y)
+{
+    int lx;
+    int ly;
+
+    tui_control_screen_to_local(&popup->control,
+                                screen_x, screen_y,
+                                &lx, &ly);
+
+    if (lx < 1 || lx >= popup->control.width - 1)
+        return -1;
+
+    if (ly < 1 || ly > popup->menu->count)
+        return -1;
+
+    return ly - 1;
+}
+
+/*
+ * Closes the menu and turns the item into a command.
+ * Shared by ENTER and mouse click.
+ */
+static int tui_popup_activate(TuiPopupMenu *popup,
+                              TuiEvent *event)
+{
+    TuiMenuItem *item;
+
+    if (popup->selected < 0)
+        return 1;
+
+    item = &popup->menu->items[popup->selected];
+
+    if (!tui_menuitem_selectable(item))
+        return 1;
+
+    tui_menubar_close(popup->owner);
+
+    event->type = TUI_EV_COMMAND;
+    event->command = item->command;
+    event->source = &popup->control;
+
+    return 1;
+}
+
+/*
+ * The popup holds capture while open, so it receives every
+ * mouse event and decides by position: popup, menu bar or
+ * outside (modal).
+ */
+static int popup_mouse(TuiPopupMenu *popup, TuiEvent *event)
+{
+    TuiMenuBar *bar;
+    int item;
+    int title;
+    int left;
+
+    bar = popup->owner;
+    left = (event->mouse_action == TUI_MOUSE_MOVE) ||
+           (event->mouse_buttons & TUI_MOUSE_LEFT);
+
+    if (!left)
+        return 1;
+
+    item = tui_popup_hit_item(popup,
+                              event->mouse_x,
+                              event->mouse_y);
+
+    if (item >= 0) {
+        if (!tui_menuitem_selectable(&popup->menu->items[item]))
+            return 1;
+
+        if (event->mouse_action == TUI_MOUSE_UP) {
+            popup->selected = item;
+            return tui_popup_activate(popup, event);
+        }
+
+        popup->selected = item;
+        return 1;
+    }
+
+    title = tui_menubar_hit(bar,
+                            event->mouse_x,
+                            event->mouse_y);
+
+    if (title >= 0) {
+        if (event->mouse_action == TUI_MOUSE_DOWN &&
+            title == bar->selected)
+            tui_menubar_close(bar);
+        else if (title != bar->selected &&
+                 event->mouse_action != TUI_MOUSE_UP)
+            tui_menubar_select(bar, title);
+
+        return 1;
+    }
+
+    /* Click outside popup and titles closes; the click is consumed. */
+    if (event->mouse_action == TUI_MOUSE_DOWN)
+        tui_menubar_close(bar);
+
+    return 1;
+}
 
 static int popup_event(TuiControl *control, TuiEvent *event)
 {
     TuiPopupMenu *popup;
     TuiMenuBar *bar;
-    TuiMenuItem *item;
 
     popup = (TuiPopupMenu *)control;
     bar = popup->owner;
+
+    if (event->type == TUI_EV_MOUSE)
+        return popup_mouse(popup, event);
 
     if (event->type != TUI_EV_KEY)
         return 0;
@@ -1013,26 +1206,7 @@ static int popup_event(TuiControl *control, TuiEvent *event)
 
     case TUI_KEY_ENTER:
 
-        if (popup->selected < 0)
-            return 1;
-
-        item =
-            &popup->menu->items[popup->selected];
-
-        if (!tui_menuitem_selectable(item))
-            return 1;
-
-        /*
-         * Close first. The command then returns to the
-         * application in the same TuiEvent.
-         */
-        tui_menubar_close(bar);
-
-        event->type = TUI_EV_COMMAND;
-        event->command = item->command;
-        event->source = control;
-
-        return 1;
+        return tui_popup_activate(popup, event);
     }
 
     return 0;
@@ -1262,12 +1436,54 @@ static int tui_menubar_accelerator(TuiMenuBar *bar,
     return 0;
 }
 
+/*
+ * Mouse on the bar while no popup is open (the open-popup case
+ * is handled by popup_mouse because the popup owns capture).
+ */
+static int menubar_mouse(TuiMenuBar *bar, TuiEvent *event)
+{
+    int title;
+
+    title = tui_menubar_hit(bar,
+                            event->mouse_x,
+                            event->mouse_y);
+
+    if (event->mouse_action == TUI_MOUSE_DOWN &&
+        (event->mouse_buttons & TUI_MOUSE_LEFT)) {
+
+        if (title >= 0) {
+            bar->selected = title;
+            tui_menubar_open(bar);
+            return 1;
+        }
+
+        if (bar->active) {
+            tui_menubar_close(bar);
+            return 1;
+        }
+
+        return 0;
+    }
+
+    /* Keyboard-activated bar without popup: hover moves the title. */
+    if (event->mouse_action == TUI_MOUSE_MOVE &&
+        bar->active && title >= 0) {
+        bar->selected = title;
+        return 1;
+    }
+
+    return bar->active;
+}
+
 static int menubar_event(TuiControl *control,
                          TuiEvent *event)
 {
     TuiMenuBar *bar;
 
     bar = (TuiMenuBar *)control;
+
+    if (event->type == TUI_EV_MOUSE)
+        return menubar_mouse(bar, event);
 
     if (event->type != TUI_EV_KEY)
         return 0;
@@ -1354,6 +1570,57 @@ void tui_menubar_init(TuiMenuBar *bar,
  * ------------------------------------------------------------
  */
 
+/*
+ * Text for the key hint, e.g. "F10 ". Returns its length
+ * (0 when the item has no function key).
+ */
+static int tui_statusitem_keyname(TuiStatusItem *item, char *buf)
+{
+    int fn;
+    int n;
+
+    if (item->key < TUI_KEY_F1 || item->key > TUI_KEY_F12) {
+        buf[0] = 0;
+        return 0;
+    }
+
+    fn = item->key - TUI_KEY_F1 + 1;
+    n = 0;
+
+    buf[n++] = 'F';
+
+    if (fn >= 10)
+        buf[n++] = (char)('0' + (fn / 10));
+
+    buf[n++] = (char)('0' + (fn % 10));
+    buf[n++] = ' ';
+    buf[n] = 0;
+
+    return n;
+}
+
+static int tui_statusitem_width(TuiStatusItem *item)
+{
+    char key[8];
+
+    return tui_statusitem_keyname(item, key) +
+           (item->text != 0 ? tui_strlen(item->text) : 0);
+}
+
+/* Items start at x = 1 and are separated by 2 columns. */
+static int tui_statusitem_x(TuiStatusBar *bar, int index)
+{
+    int i;
+    int x;
+
+    x = 1;
+
+    for (i = 0; i < index; ++i)
+        x += tui_statusitem_width(&bar->items[i]) + 2;
+
+    return x;
+}
+
 static void statusbar_draw(TuiControl *control, TuiDraw *draw)
 {
     TuiStatusBar *bar;
@@ -1364,6 +1631,7 @@ static void statusbar_draw(TuiControl *control, TuiDraw *draw)
     int len;
     int status_len;
     int status_x;
+    char key[8];
 
     bar = (TuiStatusBar *)control;
 
@@ -1389,41 +1657,16 @@ static void statusbar_draw(TuiControl *control, TuiDraw *draw)
     for (i = 0; i < bar->count; ++i) {
         item = &bar->items[i];
 
-        /*
-         * Leave a little separation between items.
-         */
-        if (i != 0)
-            x += 2;
+        x = tui_statusitem_x(bar, i);
 
         /*
          * Draw function key.
          */
-        if (item->key >= TUI_KEY_F1 &&
-            item->key <= TUI_KEY_F12) {
+        len = tui_statusitem_keyname(item, key);
 
-            int fn;
-
-            fn = item->key - TUI_KEY_F1 + 1;
-
-            tui_putc(draw, x, 0, 'F', attr);
-            ++x;
-
-            if (fn >= 10) {
-                tui_putc(draw,
-                         x, 0,
-                         '0' + (fn / 10),
-                         attr);
-                ++x;
-            }
-
-            tui_putc(draw,
-                     x, 0,
-                     '0' + (fn % 10),
-                     attr);
-            ++x;
-
-            tui_putc(draw, x, 0, ' ', attr);
-            ++x;
+        if (len > 0) {
+            tui_text(draw, x, 0, key, attr);
+            x += len;
         }
 
         /*
@@ -1466,14 +1709,37 @@ static void statusbar_draw(TuiControl *control, TuiDraw *draw)
 static int statusbar_event(TuiControl *control,
                            TuiEvent *event)
 {
-    /*
-     * For now StatusBar is display-only.
-     *
-     * Later mouse clicks may generate the command associated
-     * with a TuiStatusItem.
-     */
-    (void)control;
-    (void)event;
+    TuiStatusBar *bar;
+    int lx;
+    int ly;
+    int i;
+    int x0;
+
+    if (event->type != TUI_EV_MOUSE ||
+        event->mouse_action != TUI_MOUSE_DOWN ||
+        !(event->mouse_buttons & TUI_MOUSE_LEFT))
+        return 0;
+
+    bar = (TuiStatusBar *)control;
+
+    tui_control_screen_to_local(control,
+                                event->mouse_x,
+                                event->mouse_y,
+                                &lx, &ly);
+
+    for (i = 0; i < bar->count; ++i) {
+        x0 = tui_statusitem_x(bar, i);
+
+        if (lx >= x0 &&
+            lx < x0 + tui_statusitem_width(&bar->items[i])) {
+
+            event->type = TUI_EV_COMMAND;
+            event->command = bar->items[i].command;
+            event->source = control;
+
+            return 1;
+        }
+    }
 
     return 0;
 }
@@ -1502,6 +1768,302 @@ void tui_statusbar_set_text(TuiStatusBar *bar,
                             const char *text)
 {
     bar->status = text;
+}
+
+/*
+ * ------------------------------------------------------------
+ * Edit
+ * ------------------------------------------------------------
+ */
+
+void tui_edit_init(TuiEdit *edit,
+                   int x,
+                   int y,
+                   int width,
+                   char *buffer,
+                   int capacity)
+{
+    int len;
+
+    tui_control_init(
+        &edit->control,
+        &edit_class,
+        x, y,
+        width, 1,
+        TUI_VISIBLE | TUI_ENABLED | TUI_FOCUSABLE);
+
+    edit->text = buffer;
+    edit->capacity = capacity;
+
+    len = 0;
+
+    if (buffer != 0) {
+        while (len < capacity - 1 &&
+               buffer[len] != '\0') {
+            ++len;
+        }
+    }
+
+    edit->length = len;
+    edit->cursor = len;
+    edit->offset = 0;
+}
+
+static void edit_draw(TuiControl *control,
+                      TuiDraw *draw)
+{
+    TuiEdit *edit;
+    int attr;
+    int x;
+    int index;
+
+    edit = (TuiEdit *)control;
+    attr = tui_control_attr(control);
+
+    /*
+     * Clear edit area.
+     */
+    tui_fill(draw,
+             0, 0,
+             control->width, 1,
+             ' ',
+             attr);
+
+    /*
+     * Draw visible part of text.
+     */
+    for (x = 0; x < control->width; ++x) {
+        index = edit->offset + x;
+
+        if (index >= edit->length)
+            break;
+
+        tui_putc(draw,
+                 x, 0,
+                 edit->text[index],
+                 attr);
+    }
+
+    if (tui_control_has_focus(control)) {
+        tui_draw_cursor(
+            draw,
+            edit->cursor - edit->offset,
+            0);
+    }
+}
+
+static void edit_insert_char(TuiEdit *edit, int ch)
+{
+    int i;
+
+    if (edit->text == 0)
+        return;
+
+    if (edit->capacity <= 0)
+        return;
+
+    if (edit->length >= edit->capacity - 1)
+        return;
+
+    /*
+     * Move everything from cursor onwards one position
+     * to the right, including the terminating '\0'.
+     */
+    for (i = edit->length;
+         i >= edit->cursor;
+         --i) {
+        edit->text[i + 1] = edit->text[i];
+    }
+
+    edit->text[edit->cursor] = (char)ch;
+
+    ++edit->cursor;
+    ++edit->length;
+}
+
+static void edit_backspace(TuiEdit *edit)
+{
+    int i;
+
+    if (edit->cursor <= 0)
+        return;
+
+    /*
+     * Remove character before cursor.
+     * Move the rest, including '\0', one position left.
+     */
+    for (i = edit->cursor - 1;
+         i < edit->length;
+         ++i) {
+        edit->text[i] = edit->text[i + 1];
+    }
+
+    --edit->cursor;
+    --edit->length;
+}
+
+static void edit_delete(TuiEdit *edit)
+{
+    int i;
+
+    if (edit->cursor >= edit->length)
+        return;
+
+    /*
+     * Remove character at cursor.
+     * Move the rest, including '\0', one position left.
+     */
+    for (i = edit->cursor;
+         i < edit->length;
+         ++i) {
+        edit->text[i] = edit->text[i + 1];
+    }
+
+    --edit->length;
+}
+
+static void edit_ensure_cursor_visible(TuiEdit *edit)
+{
+    int width;
+
+    width = edit->control.width;
+
+    if (width <= 0)
+        return;
+
+    /*
+     * Cursor is left of the visible area.
+     */
+    if (edit->cursor < edit->offset)
+        edit->offset = edit->cursor;
+
+    /*
+     * Cursor is right of the visible area.
+     */
+    if (edit->cursor >= edit->offset + width)
+        edit->offset = edit->cursor - width + 1;
+
+    if (edit->offset < 0)
+        edit->offset = 0;
+}
+
+static int edit_event(TuiControl *control,
+                      TuiEvent *event)
+{
+    TuiEdit *edit;
+
+    edit = (TuiEdit *)control;
+
+    if (event->type == TUI_EV_MOUSE &&
+        event->mouse_action == TUI_MOUSE_DOWN &&
+        (event->mouse_buttons & TUI_MOUSE_LEFT)) {
+
+        int x;
+        int y;
+        int pos;
+
+        tui_control_screen_to_local(
+            control,
+            event->mouse_x,
+            event->mouse_y,
+            &x,
+            &y);
+
+        pos = edit->offset + x;
+
+        if (pos < 0)
+            pos = 0;
+
+        if (pos > edit->length)
+            pos = edit->length;
+
+        edit->cursor = pos;
+        edit_ensure_cursor_visible(edit);
+
+        return 1;
+    }
+
+    switch (event->key) {
+
+    case TUI_KEY_LEFT:
+        if (edit->cursor > 0)
+            --edit->cursor;
+
+        edit_ensure_cursor_visible(edit);
+        return 1;
+
+    case TUI_KEY_RIGHT:
+        if (edit->cursor < edit->length)
+            ++edit->cursor;
+
+        edit_ensure_cursor_visible(edit);
+        return 1;
+
+    case TUI_KEY_HOME:
+        edit->cursor = 0;
+        edit_ensure_cursor_visible(edit);
+        return 1;
+
+    case TUI_KEY_END:
+        edit->cursor = edit->length;
+        edit_ensure_cursor_visible(edit);
+        return 1;
+
+    case TUI_KEY_BACKSPACE:
+        edit_backspace(edit);
+        edit_ensure_cursor_visible(edit);
+        return 1;
+
+    case TUI_KEY_DELETE:
+        edit_delete(edit);
+        edit_ensure_cursor_visible(edit);
+        return 1;
+    }
+
+    /*
+     * Printable ASCII character.
+     */
+    if (event->key >= 32 &&
+        event->key <= 126) {
+
+        edit_insert_char(edit, event->key);
+        edit_ensure_cursor_visible(edit);
+        return 1;
+    }
+
+    return 0;
+}
+
+void tui_edit_set_text(TuiEdit *edit,
+                       const char *text)
+{
+    int i;
+
+    if (edit == 0 ||
+        edit->text == 0 ||
+        edit->capacity <= 0)
+        return;
+
+    i = 0;
+
+    if (text != 0) {
+        while (i < edit->capacity - 1 &&
+               text[i] != '\0') {
+            edit->text[i] = text[i];
+            ++i;
+        }
+    }
+
+    edit->text[i] = '\0';
+
+    edit->length = i;
+    edit->cursor = i;
+    edit->offset = 0;
+}
+
+const char *tui_edit_get_text(TuiEdit *edit)
+{
+    return edit->text;
 }
 
 /*
