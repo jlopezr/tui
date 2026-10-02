@@ -664,16 +664,18 @@ static void popup_draw(TuiControl *control, TuiDraw *draw)
 
         if (item->flags & TUI_MENU_SEPARATOR) {
 
-            tui_putc(draw, 0, i + 1, '+', normal_attr);
+            tui_putc(draw, 0, i + 1,
+                    TUI_CH_LTEE, normal_attr);
 
             for (x = 1; x < control->width - 1; ++x)
-                tui_putc(draw, x, i + 1, '-', normal_attr);
+                tui_putc(draw, x, i + 1,
+                        TUI_CH_HLINE, normal_attr);
 
             tui_putc(draw,
-                     control->width - 1,
-                     i + 1,
-                     '+',
-                     normal_attr);
+                    control->width - 1,
+                    i + 1,
+                    TUI_CH_RTEE,
+                    normal_attr);
 
         } else {
 
