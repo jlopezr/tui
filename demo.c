@@ -9,6 +9,107 @@
 #define CMD_STOP   106
 #define CMD_ABOUT  107
 
+typedef struct App {
+    int running;
+
+    TuiDesktop desktop;
+    TuiMenuBar menu_bar;
+    TuiStatusBar status_bar;
+
+    TuiWindow window;
+    TuiLabel label;
+    TuiButton ok;
+    TuiButton quit;
+} App;
+
+typedef void (*CommandFn)(App *app);
+
+typedef struct CommandEntry {
+    int command;
+    CommandFn function;
+} CommandEntry;
+
+static void cmd_ok(App *app)
+{
+    tui_label_set_text(
+        &app->label,
+        "Has pulsado Aceptar.");
+}
+
+static void cmd_new(App *app)
+{
+    tui_label_set_text(
+        &app->label,
+        "File -> New");
+}
+
+static void cmd_open(App *app)
+{
+    tui_label_set_text(
+        &app->label,
+        "File -> Open");
+}
+
+static void cmd_save(App *app)
+{
+    tui_label_set_text(
+        &app->label,
+        "File -> Save");
+}
+
+static void cmd_run(App *app)
+{
+    tui_label_set_text(
+        &app->label,
+        "Run -> Run");
+}
+
+static void cmd_stop(App *app)
+{
+    tui_label_set_text(
+        &app->label,
+        "Run -> Stop");
+}
+
+static void cmd_about(App *app)
+{
+    tui_label_set_text(
+        &app->label,
+        "Help -> About");
+}
+
+static void cmd_quit(App *app)
+{
+    app->running = 0;
+}
+
+static CommandEntry command_table[] = {
+    { CMD_OK,    cmd_ok    },
+    { CMD_NEW,   cmd_new   },
+    { CMD_OPEN,  cmd_open  },
+    { CMD_SAVE,  cmd_save  },
+    { CMD_RUN,   cmd_run   },
+    { CMD_STOP,  cmd_stop  },
+    { CMD_ABOUT, cmd_about },
+    { CMD_QUIT,  cmd_quit  }
+};
+
+#define COMMAND_COUNT \
+    ((int)(sizeof(command_table) / sizeof(command_table[0])))
+
+static int dispatch_command(App *app, int command)
+{
+    int i;
+
+    for (i = 0; i < COMMAND_COUNT; ++i) {
+        if (command_table[i].command == command) {
+            command_table[i].function(app);
+            return 1;
+        }
+    }
+
+    return 0;
+}
 
 static TuiMenuItem file_items[] = {
     { "New",     CMD_NEW,  TUI_KEY_NONE, 0 },
@@ -42,15 +143,8 @@ static TuiStatusItem status_items[] = {
 
 int main(void)
 {
-    TuiDesktop desktop;
-    TuiWindow window;
-    TuiLabel label;
-    TuiButton ok;
-    TuiButton quit;
-    TuiMenuBar menu_bar;
-    TuiStatusBar status_bar;
+    App app;
     TuiEvent event;
-    int running;
 
     if (!tui_init())
         return 1;
@@ -58,27 +152,27 @@ int main(void)
     /*
      * Desktop
      */
-    tui_desktop_init(&desktop);
+    tui_desktop_init(&app.desktop);
 
     /*
      * Menu bar
      */
-    tui_menubar_init(&menu_bar, menus, 3);
+    tui_menubar_init(&app.menu_bar, menus, 3);
 
     tui_statusbar_init(
-        &status_bar,
+        &app.status_bar,
         status_items,
         4);
 
     tui_statusbar_set_text(
-        &status_bar,
+        &app.status_bar,
         "Ready");
 
     /*
      * Window
      */
     tui_window_init(
-        &window,
+        &app.window,
         10, 5,
         50, 10,
         "Demo");
@@ -87,19 +181,19 @@ int main(void)
      * Controls
      */
     tui_label_init(
-        &label,
+        &app.label,
         2, 2,
         "Esto es una prueba de la TUI");
 
     tui_button_init(
-        &ok,
+        &app.ok,
         8, 5,
         14,
         "Aceptar",
         CMD_OK);
 
     tui_button_init(
-        &quit,
+        &app.quit,
         26, 5,
         12,
         "Salir",
@@ -116,84 +210,44 @@ int main(void)
      *        +-- OK
      *        +-- Quit
      */    
-    tui_add(&desktop.control, &window.control);
-    tui_add(&desktop.control, &menu_bar.control);
-    tui_add(&desktop.control, &status_bar.control);
+    tui_add(&app.desktop.control, &app.window.control);
+    tui_add(&app.desktop.control, &app.menu_bar.control);
+    tui_add(&app.desktop.control, &app.status_bar.control);
     
-    tui_add(&window.control, &label.control);
-    tui_add(&window.control, &ok.control);
-    tui_add(&window.control, &quit.control);
+    tui_add(&app.window.control, &app.label.control);
+    tui_add(&app.window.control, &app.ok.control);
+    tui_add(&app.window.control, &app.quit.control);
 
     /*
      * Initial focus.
      */
     tui_desktop_set_focus(
-        &desktop,
-        &ok.control);
+        &app.desktop,
+        &app.ok.control);
 
     /*
      * Main loop.
      */
-    running = 1;
+    app.running = 1;
 
-    while (running) {
+    while (app.running) {
 
-        tui_draw(&desktop);
+        tui_draw(&app.desktop);
 
         tui_read_event(&event);
 
         if (event.type == TUI_EV_KEY &&
             event.key == TUI_KEY_ESCAPE &&
-            desktop.capture == 0) {
+            app.desktop.capture == 0) {
 
-                running = 0;
+                app.running = 0;
 
         } else {
-            tui_dispatch(&desktop, &event);
+            tui_dispatch(&app.desktop, &event);
         }
 
-        if (event.type == TUI_EV_COMMAND) {
-
-            if (event.command == CMD_OK) {
-
-                tui_label_set_text(
-                    &label,
-                    "Has pulsado Aceptar.");
-
-            } else if (event.command == CMD_NEW) {
-
-                tui_label_set_text(
-                    &label,
-                    "File -> New");
-
-            } else if (event.command == CMD_OPEN) {
-
-                tui_label_set_text(
-                    &label,
-                    "File -> Open");
-
-            } else if (event.command == CMD_SAVE) {
-
-                tui_label_set_text(
-                    &label,
-                    "File -> Save");
-
-            } else if (event.command == CMD_RUN) {
-
-                tui_label_set_text(
-                    &label,
-                    "Run -> Run");
-
-            } else if (event.command == CMD_ABOUT) {
-
-                tui_label_set_text(
-                    &label,
-                    "Help -> About");
-
-            } else if (event.command == CMD_QUIT) {
-
-                running = 0;
-            }
+        if (event.type == TUI_EV_COMMAND) {            
+            dispatch_command(&app, event.command);
         }
     }
 
