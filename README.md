@@ -6,8 +6,17 @@ Primera prueba del núcleo TUI discutido:
 - Sin `malloc`: los objetos los proporciona el caller.
 - `TuiControl` como base de `Window`, `Label` y `Button`.
 - `TuiListBox` con selección por teclado/ratón, activación y type-to-select.
-- La demo muestra Label, Button, Edit y ListBox en ventanas separadas; el
-  StatusBar muestra el último comando o el control con el que se interactuó.
+- La demo muestra Label, Button, CheckBox, RadioButton, Edit, ComboBox y
+  ListBox en ventanas separadas; el StatusBar muestra el último comando o
+  el control con el que se interactuó.
+- El menú `Demo` permite alternar durante la ejecución entre esa demo de
+  controles y un mini IDE que muestra Project, Editor, Inspector y Output
+  organizados con docking. MenuBar y StatusBar permanecen activos al cambiar.
+- Ambas vistas se almacenan en `App` y se conectan/desconectan del árbol de
+  controles al alternar; no se asigna memoria dinámicamente ni se duplica la
+  inicialización de sus controles.
+- El ComboBox abre y navega sus opciones con las flechas; su valor y el fondo
+  del desplegable heredan el atributo de color de su padre.
 - Vtable (`TuiClass`) compartida por tipo.
 - Árbol intrusivo de controles.
 - Coordenadas de hijos relativas al área cliente de la ventana.
@@ -49,11 +58,12 @@ make test
 ```
 
 La suite organiza las pruebas por control (`test_listbox.c`, `test_edit.c`,
-`test_button.c`, `test_window.c`, `test_menu.c`, `test_statusbar.c` y
-`test_label.c` y `test_core.c` para árbol, layout, hit-testing y foco.
-`test_support.c` comparte la consola simulada y los helpers; no requiere
-ncurses ni una terminal interactiva. Se compila con los mismos flags C89
-estrictos que el resto del proyecto.
+`test_button.c`, `test_checkbox.c`, `test_radiobutton.c`, `test_combobox.c`,
+`test_window.c`, `test_menu.c`, `test_statusbar.c` y `test_label.c`) y
+`test_core.c` cubre árbol, layout, hit-testing y foco. `test_support.c`
+comparte la consola simulada y los helpers; no requiere ncurses ni una
+terminal interactiva. Se compila con los mismos flags C89 estrictos que el
+resto del proyecto.
 
 Para generar un informe de cobertura de líneas del core y los controles con
 LLVM. El informe excluye los ficheros de tests y los headers:
@@ -73,6 +83,8 @@ perfiles quedan en `coverage/`, que se puede limpiar con `make clean`.
 - `tui_unity.c`: agregador opcional para un solo translation unit.
 - `tui_window.c`, `tui_button.c`, `tui_label.c`: controles básicos.
 - `tui_edit.c`, `tui_listbox.c`: controles de edición y lista.
+- `tui_checkbox.c`, `tui_radiobutton.c`, `tui_combobox.c`: selección
+  booleana, exclusiva por grupo y desplegable.
 - `tui_menu.c`: MenuBar y PopupMenu.
 - `tui_statusbar.c`: StatusBar.
 - `console.h`: contrato del backend.

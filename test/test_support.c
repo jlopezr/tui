@@ -35,6 +35,8 @@ void test_run_case(const char *name, TestFn function)
         printf("PASS: %s\n", name);
     else
         printf("FAIL: %s\n", name);
+
+    fflush(stdout);
 }
 
 int tui_console_init(void)

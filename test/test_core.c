@@ -65,6 +65,7 @@ static void test_docking_and_hit_testing(void)
     TuiWindow right;
     TuiWindow workspace;
     TuiWindow panel;
+    TuiWindow panel_right;
     TuiLabel first;
     TuiLabel second;
     TuiLabel hidden;
@@ -81,6 +82,8 @@ static void test_docking_and_hit_testing(void)
     tui_window_init(&workspace, 0, 0, 1, 1, "Workspace");
     workspace.control.dock = TUI_DOCK_FILL;
     tui_window_init(&panel, 2, 2, 20, 10, "Panel");
+    tui_window_init(&panel_right, 0, 0, 5, 1, "Right");
+    panel_right.control.dock = TUI_DOCK_RIGHT;
     tui_label_init(&first, 2, 2, "first");
     tui_label_init(&second, 2, 2, "second");
     tui_label_init(&hidden, 0, 0, "hidden");
@@ -94,6 +97,7 @@ static void test_docking_and_hit_testing(void)
     tui_add(&desktop.control, &workspace.control);
     tui_add(&workspace.control, &hidden.control);
     tui_add(&workspace.control, &panel.control);
+    tui_add(&panel.control, &panel_right.control);
     tui_add(&panel.control, &first.control);
     tui_add(&panel.control, &second.control);
 
@@ -113,7 +117,14 @@ static void test_docking_and_hit_testing(void)
     CHECK(workspace.control.width == TEST_WIDTH - 25);
     CHECK(workspace.control.height == TEST_HEIGHT - 2);
     CHECK(panel.control.x == 2);
+    CHECK(panel_right.control.x == 13);
+    CHECK(panel_right.control.y == 0);
+    CHECK(panel_right.control.width == 5);
+    CHECK(panel_right.control.height == 8);
     CHECK(hidden.control.x == 0);
+    CHECK(test_cell_chars[6][31] == TUI_CH_VLINE);
+    CHECK(test_cell_chars[12][29] == TUI_CH_HLINE);
+    CHECK(test_cell_chars[12][31] == TUI_CH_BR);
 
     CHECK(tui_hit_test(&desktop.control, 16, 7) ==
           &second.control);

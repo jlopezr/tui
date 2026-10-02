@@ -152,7 +152,6 @@ void tui_console_cell(int x, int y, int ch, int attr)
     chtype c;
 
     a = 0;
-
     if (tui_colors) {
         fg = attr & 0x0f;
         bg = (attr >> 4) & 0x0f;

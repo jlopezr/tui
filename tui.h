@@ -17,6 +17,9 @@ typedef struct TuiLabel TuiLabel;
 typedef struct TuiButton TuiButton;
 typedef struct TuiEdit TuiEdit;
 typedef struct TuiListBox TuiListBox;
+typedef struct TuiCheckBox TuiCheckBox;
+typedef struct TuiRadioButton TuiRadioButton;
+typedef struct TuiComboBox TuiComboBox;
 
 /*
  * Control flags
@@ -248,6 +251,28 @@ struct TuiButton {
     int pressed;
 };
 
+/*
+ * Check box
+ */
+struct TuiCheckBox {
+    TuiControl control;
+
+    const char *text;
+    int checked;
+    int command;
+};
+
+/*
+ * Radio button
+ */
+struct TuiRadioButton {
+    TuiControl control;
+
+    const char *text;
+    int group;
+    int checked;
+    int command;
+};
 
 /*
  * Library
@@ -339,6 +364,51 @@ void tui_button_init(TuiButton *button,
                      int width,
                      const char *text,
                      int command);
+
+/*
+ * Check box
+ */
+void tui_checkbox_init(TuiCheckBox *checkbox,
+                       int x,
+                       int y,
+                       int width,
+                       const char *text);
+
+void tui_checkbox_set_checked(TuiCheckBox *checkbox, int checked);
+int tui_checkbox_get_checked(TuiCheckBox *checkbox);
+void tui_checkbox_set_command(TuiCheckBox *checkbox, int command);
+
+/*
+ * Radio button
+ */
+void tui_radiobutton_init(TuiRadioButton *radio,
+                          int x,
+                          int y,
+                          int width,
+                          const char *text,
+                          int group);
+
+void tui_radiobutton_set_checked(TuiRadioButton *radio, int checked);
+int tui_radiobutton_get_checked(TuiRadioButton *radio);
+void tui_radiobutton_set_command(TuiRadioButton *radio, int command);
+
+/*
+ * Combo box
+ */
+void tui_combobox_init(TuiComboBox *combo,
+                       int x,
+                       int y,
+                       int width,
+                       const char **items,
+                       int count);
+
+void tui_combobox_set_items(TuiComboBox *combo,
+                            const char **items,
+                            int count);
+
+int tui_combobox_get_selected(TuiComboBox *combo);
+void tui_combobox_set_selected(TuiComboBox *combo, int index);
+void tui_combobox_set_command(TuiComboBox *combo, int command);
 
 /*
  * Edit
@@ -462,6 +532,24 @@ struct TuiListBox {
     int selected;
     int offset;
     int command;
+};
+
+/*
+ * Combo box
+ */
+struct TuiComboBox {
+    TuiControl control;
+
+    const char **items;
+    int count;
+    int selected;
+    int command;
+
+    int open;
+    int original_selected;
+
+    TuiWindow popup_window;
+    TuiListBox popup_list;
 };
 
 void tui_listbox_init(TuiListBox *list,

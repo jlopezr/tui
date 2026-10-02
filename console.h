@@ -67,7 +67,6 @@
 #define TUI_CH_BTEE    0x109
 
 #define TUI_CH_CROSS   0x10A
-
 int  tui_console_init(void);
 void tui_console_shutdown(void);
 

@@ -256,6 +256,17 @@ static void tui_layout_children(TuiControl *parent)
     right = parent->width;
     bottom = parent->height;
 
+    if (parent->cls == &tui_window_class) {
+        right -= 2;
+        bottom -= 2;
+
+        if (right < 0)
+            right = 0;
+
+        if (bottom < 0)
+            bottom = 0;
+    }
+
     child = parent->first;
 
     while (child != 0) {

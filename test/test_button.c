@@ -35,6 +35,10 @@ static void test_mouse_capture_and_activation(void)
     CHECK(test_key_event(&desktop, TUI_KEY_ENTER, &event));
     CHECK(event.type == TUI_EV_COMMAND);
     CHECK(event.command == 73);
+
+    CHECK(test_key_event(&desktop, ' ', &event));
+    CHECK(event.type == TUI_EV_COMMAND);
+    CHECK(event.command == 73);
 }
 
 static void test_draw_focus_states(void)

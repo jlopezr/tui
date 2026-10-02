@@ -43,5 +43,8 @@ void test_menu_suite(void);
 void test_statusbar_suite(void);
 void test_label_suite(void);
 void test_core_suite(void);
+void test_checkbox_suite(void);
+void test_radiobutton_suite(void);
+void test_combobox_suite(void);
 
 #endif

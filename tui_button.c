@@ -34,6 +34,9 @@ static void button_draw(TuiControl *control, TuiDraw *draw)
              ' ',
              attr);
 
+    if (control->width <= 0)
+        return;
+
     len = tui_strlen(button->text);
 
     x = (control->width - len - 2) / 2;
@@ -78,7 +81,7 @@ static int button_event(TuiControl *control, TuiEvent *event)
     button = (TuiButton *)control;
 
     if (event->type == TUI_EV_KEY &&
-        event->key == TUI_KEY_ENTER)
+        (event->key == TUI_KEY_ENTER || event->key == ' '))
         return tui_button_command(button, control, event);
 
     if (event->type != TUI_EV_MOUSE ||

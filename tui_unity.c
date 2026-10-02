@@ -10,6 +10,9 @@
 #include "tui_listbox.c"
 #include "tui_menu.c"
 #include "tui_statusbar.c"
+#include "tui_checkbox.c"
+#include "tui_radiobutton.c"
+#include "tui_combobox.c"
 
 #if defined(TUI_BACKEND_NCURSES)
     #include "console_ncurses.c"
