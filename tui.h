@@ -31,6 +31,7 @@ typedef struct TuiButton TuiButton;
  */
 #define TUI_EV_KEY      1
 #define TUI_EV_COMMAND  2
+#define TUI_EV_MOUSE    3
 
 
 /*
@@ -75,6 +76,19 @@ typedef struct TuiButton TuiButton;
 #define TUI_ATTR_STATUSBAR      TUI_ATTR(TUI_BLACK,     TUI_LIGHTGRAY)
 #define TUI_ATTR_LABEL          TUI_ATTR(TUI_LIGHTGRAY, TUI_BLUE)
 
+/* Control attr value meaning "use the parent's attribute". */
+#define TUI_ATTR_INHERIT        (-1)
+
+/*
+ * Control docking.
+ */
+#define TUI_DOCK_NONE    0
+#define TUI_DOCK_TOP     1
+#define TUI_DOCK_BOTTOM  2
+#define TUI_DOCK_LEFT    3
+#define TUI_DOCK_RIGHT   4
+#define TUI_DOCK_FILL    5
+
 /*
  * Drawing context.
  *
@@ -86,6 +100,9 @@ typedef struct TuiButton TuiButton;
  *     x2/y2 are exclusive.
  */
 struct TuiDraw {
+    /* Desktop being drawn; receives cursor requests. */
+    TuiDesktop *desktop;
+
     int ox;
     int oy;
 
@@ -104,6 +121,12 @@ struct TuiEvent {
 
     int key;
     int command;
+
+    /* Mouse: always global screen coordinates. */
+    int mouse_x;
+    int mouse_y;
+    int mouse_action;
+    int mouse_buttons;
 
     TuiControl *source;
 };
@@ -146,8 +169,13 @@ struct TuiControl {
     int y;
     int width;
     int height;
+    
+    int dock;
 
     int flags;
+
+    /* Explicit attribute or TUI_ATTR_INHERIT. */
+    int attr;
 };
 
 
@@ -166,6 +194,11 @@ struct TuiDesktop {
 
     TuiControl *focused;
     TuiControl *capture;
+
+    /* Cursor requested during the last draw, in screen coordinates. */
+    int cursor_visible;
+    int cursor_x;
+    int cursor_y;
 };
 
 
@@ -176,6 +209,14 @@ struct TuiWindow {
     TuiControl control;
 
     const char *title;
+
+    /* Drag state; drag_dx/dy is the mouse offset inside the window. */
+    int dragging;
+    int drag_dx;
+    int drag_dy;
+
+    /* Title attribute; TUI_ATTR_INHERIT uses the window's attribute. */
+    int title_attr;
 };
 
 
@@ -212,7 +253,21 @@ void tui_shutdown(void);
  */
 void tui_add(TuiControl *parent, TuiControl *child);
 
+/* Effective attribute: walks up the parents until one is not INHERIT. */
+int tui_control_attr(TuiControl *control);
+
 void tui_remove(TuiControl *control);
+
+/* Moves control to the end of its parent's list (top of z-order). */
+void tui_bring_to_front(TuiControl *control);
+
+/* Deepest visible control under screen (x,y), or 0. */
+TuiControl *tui_hit_test(TuiControl *root, int x, int y);
+
+/* Converts screen coordinates to the control's local coordinates. */
+void tui_control_screen_to_local(TuiControl *control,
+                                 int screen_x, int screen_y,
+                                 int *local_x, int *local_y);
 
 /*
  * Desktop
@@ -234,6 +289,9 @@ void tui_desktop_clear_capture(TuiDesktop *desktop);
  * Main UI operations
  */
 void tui_draw(TuiDesktop *desktop);
+
+/* Request the cursor at local (x,y); ignored if clipped. */
+void tui_draw_cursor(TuiDraw *draw, int x, int y);
 
 int tui_dispatch(TuiDesktop *desktop,
                  TuiEvent *event);

@@ -40,19 +40,43 @@ static int tui_min(int a, int b)
  * ------------------------------------------------------------
  */
 
+/*
+ * Converts local coordinates to screen coordinates.
+ * Returns 0 if the cell is outside the clipping rectangle.
+ */
+static int tui_clip_point(const TuiDraw *d, int x, int y,
+                          int *sx, int *sy)
+{
+    *sx = d->ox + x;
+    *sy = d->oy + y;
+
+    return !(*sx < d->x1 || *sx >= d->x2 ||
+             *sy < d->y1 || *sy >= d->y2);
+}
+
 static void tui_putc(TuiDraw *d, int x, int y, int ch, int attr)
 {
     int sx;
     int sy;
 
-    sx = d->ox + x;
-    sy = d->oy + y;
-
-    if (sx < d->x1 || sx >= d->x2 ||
-        sy < d->y1 || sy >= d->y2)
+    if (!tui_clip_point(d, x, y, &sx, &sy))
         return;
 
     tui_console_cell(sx, sy, ch, attr);
+}
+
+void tui_draw_cursor(TuiDraw *draw, int x, int y)
+{
+    int sx;
+    int sy;
+
+    if (draw->desktop == 0 ||
+        !tui_clip_point(draw, x, y, &sx, &sy))
+        return;
+
+    draw->desktop->cursor_x = sx;
+    draw->desktop->cursor_y = sy;
+    draw->desktop->cursor_visible = 1;
 }
 
 static void tui_text(TuiDraw *d, int x, int y,
@@ -130,7 +154,23 @@ static void tui_control_init(TuiControl *control,
     control->width = width;
     control->height = height;
 
+    control->dock = TUI_DOCK_NONE;
+
     control->flags = flags;
+
+    control->attr = TUI_ATTR_INHERIT;
+}
+
+int tui_control_attr(TuiControl *control)
+{
+    while (control != 0) {
+        if (control->attr != TUI_ATTR_INHERIT)
+            return control->attr;
+
+        control = control->parent;
+    }
+
+    return TUI_ATTR_WINDOW;
 }
 
 void tui_add(TuiControl *parent, TuiControl *child)
@@ -149,6 +189,28 @@ void tui_add(TuiControl *parent, TuiControl *child)
         parent->first = child;
 
     parent->last = child;
+}
+
+void tui_bring_to_front(TuiControl *control)
+{
+    TuiControl *parent;
+
+    parent = control->parent;
+
+    if (parent == 0 || parent->last == control)
+        return;
+
+    if (control->prev != 0)
+        control->prev->next = control->next;
+    else
+        parent->first = control->next;
+
+    control->next->prev = control->prev;
+
+    control->prev = parent->last;
+    control->next = 0;
+    parent->last->next = control;
+    parent->last = control;
 }
 
 void tui_remove(TuiControl *control)
@@ -173,6 +235,84 @@ void tui_remove(TuiControl *control)
     control->parent = 0;
     control->prev = 0;
     control->next = 0;
+}
+
+/*
+ * ------------------------------------------------------------
+ * Layout
+ * ------------------------------------------------------------
+ */
+
+static void tui_layout_children(TuiControl *parent)
+{
+    TuiControl *child;
+    int left;
+    int top;
+    int right;
+    int bottom;
+
+    left = 0;
+    top = 0;
+    right = parent->width;
+    bottom = parent->height;
+
+    child = parent->first;
+
+    while (child != 0) {
+
+        if ((child->flags & TUI_VISIBLE) == 0) {
+            child = child->next;
+            continue;
+        }
+
+        switch (child->dock) {
+
+            case TUI_DOCK_TOP:
+                child->x = left;
+                child->y = top;
+                child->width = right - left;
+
+                top += child->height;
+                break;
+
+            case TUI_DOCK_BOTTOM:
+                child->x = left;
+                child->y = bottom - child->height;
+                child->width = right - left;
+
+                bottom -= child->height;
+                break;
+
+            case TUI_DOCK_LEFT:
+                child->x = left;
+                child->y = top;
+                child->height = bottom - top;
+
+                left += child->width;
+                break;
+
+            case TUI_DOCK_RIGHT:
+                child->x = right - child->width;
+                child->y = top;
+                child->height = bottom - top;
+
+                right -= child->width;
+                break;
+
+            case TUI_DOCK_FILL:
+                child->x = left;
+                child->y = top;
+                child->width = right - left;
+                child->height = bottom - top;
+                break;
+
+            case TUI_DOCK_NONE:
+            default:
+                break;
+        }
+
+        child = child->next;
+    }
 }
 
 /*
@@ -250,7 +390,7 @@ static void desktop_draw(TuiControl *control, TuiDraw *draw)
              control->width,
              control->height,
              ' ',
-             TUI_ATTR_DESKTOP);
+             tui_control_attr(control));
 }
 
 static int desktop_event(TuiControl *control, TuiEvent *event)
@@ -270,8 +410,14 @@ void tui_desktop_init(TuiDesktop *desktop)
                      tui_console_height(),
                      TUI_VISIBLE | TUI_ENABLED);
 
+    desktop->control.attr = TUI_ATTR_DESKTOP;
+
     desktop->focused = 0;
     desktop->capture = 0;
+
+    desktop->cursor_visible = 0;
+    desktop->cursor_x = 0;
+    desktop->cursor_y = 0;
 }
 
 void tui_desktop_set_focus(TuiDesktop *desktop,
@@ -303,6 +449,10 @@ void tui_desktop_clear_capture(TuiDesktop *desktop)
  * ------------------------------------------------------------
  */
 
+static TuiDesktop *tui_find_desktop(TuiControl *control);
+static void tui_control_screen_pos(TuiControl *control,
+                                   int *sx, int *sy);
+
 static void window_draw(TuiControl *control, TuiDraw *draw)
 {
     TuiWindow *window;
@@ -312,7 +462,7 @@ static void window_draw(TuiControl *control, TuiDraw *draw)
 
     window = (TuiWindow *)control;
 
-    attr = TUI_ATTR_WINDOW;
+    attr = tui_control_attr(control);
 
     tui_fill(draw,
              0, 0,
@@ -327,6 +477,8 @@ static void window_draw(TuiControl *control, TuiDraw *draw)
             attr);
 
     if (window->title != 0) {
+        if (window->title_attr != TUI_ATTR_INHERIT)
+            attr = window->title_attr;
         title_len = tui_strlen(window->title);
         title_x = (control->width - title_len - 2) / 2;
 
@@ -349,10 +501,91 @@ static void window_draw(TuiControl *control, TuiDraw *draw)
     }
 }
 
+static void window_drag_to(TuiControl *control,
+                          TuiDesktop *desktop,
+                          TuiEvent *event)
+{
+    TuiWindow *window;
+    int sx;
+    int sy;
+    int px;
+    int py;
+
+    window = (TuiWindow *)control;
+
+    sx = event->mouse_x - window->drag_dx;
+    sy = event->mouse_y - window->drag_dy;
+
+    /* Keep a useful part of the title bar on the desktop. */
+    sx = tui_max(sx, 4 - control->width);
+    sx = tui_min(sx, desktop->control.width - 4);
+    sy = tui_max(sy, 0);
+    sy = tui_min(sy, desktop->control.height - 1);
+
+    /* Parent's client origin, in screen coordinates. */
+    px = 0;
+    py = 0;
+
+    if (control->parent != 0) {
+        tui_control_screen_pos(control->parent, &px, &py);
+
+        if (control->parent->cls == &window_class) {
+            px += 1;
+            py += 1;
+        }
+    }
+
+    control->x = sx - px;
+    control->y = sy - py;
+}
+
 static int window_event(TuiControl *control, TuiEvent *event)
 {
-    (void)control;
-    (void)event;
+    TuiWindow *window;
+    TuiDesktop *desktop;
+    int lx;
+    int ly;
+
+    if (event->type != TUI_EV_MOUSE)
+        return 0;
+
+    window = (TuiWindow *)control;
+    desktop = tui_find_desktop(control);
+
+    if (desktop == 0)
+        return 0;
+
+    if (window->dragging) {
+        if (event->mouse_action == TUI_MOUSE_MOVE) {
+            window_drag_to(control, desktop, event);
+        } else if (event->mouse_action == TUI_MOUSE_UP &&
+                   (event->mouse_buttons & TUI_MOUSE_LEFT)) {
+            window->dragging = 0;
+
+            if (desktop->capture == control)
+                tui_desktop_clear_capture(desktop);
+        }
+
+        return 1;
+    }
+
+    if (event->mouse_action == TUI_MOUSE_DOWN &&
+        (event->mouse_buttons & TUI_MOUSE_LEFT) &&
+        control->dock == TUI_DOCK_NONE) {
+
+        tui_control_screen_to_local(control,
+                                    event->mouse_x,
+                                    event->mouse_y,
+                                    &lx, &ly);
+
+        if (ly == 0 && lx >= 0 && lx < control->width) {
+            window->dragging = 1;
+            window->drag_dx = lx;
+            window->drag_dy = ly;
+            tui_desktop_set_capture(desktop, control);
+            return 1;
+        }
+    }
 
     return 0;
 }
@@ -369,6 +602,13 @@ void tui_window_init(TuiWindow *window,
                      TUI_VISIBLE | TUI_ENABLED);
 
     window->title = title;
+
+    window->dragging = 0;
+    window->drag_dx = 0;
+    window->drag_dy = 0;
+
+    window->control.attr = TUI_ATTR_WINDOW;
+    window->title_attr = TUI_ATTR_INHERIT;
 }
 
 
@@ -387,7 +627,7 @@ static void label_draw(TuiControl *control, TuiDraw *draw)
     tui_text(draw,
              0, 0,
              label->text,
-             TUI_ATTR_LABEL);
+             tui_control_attr(control));
 }
 
 static int label_event(TuiControl *control, TuiEvent *event)
@@ -1085,9 +1325,10 @@ void tui_menubar_init(TuiMenuBar *bar,
         &bar->control,
         &menubar_class,
         0, 0,
-        tui_console_width(),
-        1,
+        0, 1,
         TUI_VISIBLE | TUI_ENABLED | TUI_GLOBAL);
+
+    bar->control.dock = TUI_DOCK_TOP;
 
     bar->menus = menus;
     bar->count = count;
@@ -1245,11 +1486,11 @@ void tui_statusbar_init(TuiStatusBar *bar,
     tui_control_init(
         &bar->control,
         &statusbar_class,
-        0,
-        tui_console_height() - 1,
-        tui_console_width(),
-        1,
+        0, 0,
+        0, 1,
         TUI_VISIBLE | TUI_ENABLED);
+
+    bar->control.dock = TUI_DOCK_BOTTOM;
 
     bar->items = items;
     bar->count = count;
@@ -1270,7 +1511,7 @@ void tui_statusbar_set_text(TuiStatusBar *bar,
  */
 
 static void tui_get_child_context(TuiControl *control,
-                                  TuiDraw *draw,
+                                  const TuiDraw *draw,
                                   TuiDraw *child_draw)
 {
     int left;
@@ -1315,6 +1556,107 @@ static void tui_get_child_context(TuiControl *control,
     }
 }
 
+/*
+ * Screen position of the control's top-left corner.
+ */
+static void tui_control_screen_pos(TuiControl *control,
+                                   int *sx, int *sy)
+{
+    TuiDraw d;
+    TuiDraw cd;
+
+    if (control->parent == 0) {
+        *sx = control->x;
+        *sy = control->y;
+        return;
+    }
+
+    tui_control_screen_pos(control->parent, &d.ox, &d.oy);
+    d.x1 = d.ox;
+    d.y1 = d.oy;
+    d.x2 = d.ox + control->parent->width;
+    d.y2 = d.oy + control->parent->height;
+
+    tui_get_child_context(control->parent, &d, &cd);
+
+    *sx = cd.ox + control->x;
+    *sy = cd.oy + control->y;
+}
+
+void tui_control_screen_to_local(TuiControl *control,
+                                 int screen_x, int screen_y,
+                                 int *local_x, int *local_y)
+{
+    int sx;
+    int sy;
+
+    tui_control_screen_pos(control, &sx, &sy);
+
+    *local_x = screen_x - sx;
+    *local_y = screen_y - sy;
+}
+
+/*
+ * 'draw' describes the control exactly as in tui_draw_tree().
+ */
+static TuiControl *tui_hit_control(TuiControl *control,
+                                   const TuiDraw *draw,
+                                   int x, int y)
+{
+    TuiControl *child;
+    TuiControl *hit;
+    TuiDraw children;
+    TuiDraw cd;
+
+    if ((control->flags & TUI_VISIBLE) == 0)
+        return 0;
+
+    if (x < tui_max(draw->ox, draw->x1) ||
+        x >= tui_min(draw->ox + control->width, draw->x2) ||
+        y < tui_max(draw->oy, draw->y1) ||
+        y >= tui_min(draw->oy + control->height, draw->y2))
+        return 0;
+
+    tui_layout_children(control);
+
+    tui_get_child_context(control, draw, &children);
+
+    /* Last child is drawn on top, so it is tested first. */
+    child = control->last;
+
+    while (child != 0) {
+        cd = children;
+
+        cd.ox += child->x;
+        cd.oy += child->y;
+
+        hit = tui_hit_control(child, &cd, x, y);
+
+        if (hit != 0)
+            return hit;
+
+        child = child->prev;
+    }
+
+    return control;
+}
+
+TuiControl *tui_hit_test(TuiControl *root, int x, int y)
+{
+    TuiDraw draw;
+
+    draw.desktop = 0;
+
+    tui_control_screen_pos(root, &draw.ox, &draw.oy);
+
+    draw.x1 = draw.ox;
+    draw.y1 = draw.oy;
+    draw.x2 = draw.ox + root->width;
+    draw.y2 = draw.oy + root->height;
+
+    return tui_hit_control(root, &draw, x, y);
+}
+
 static void tui_draw_tree(TuiControl *control,
                           TuiDraw *draw)
 {
@@ -1324,6 +1666,11 @@ static void tui_draw_tree(TuiControl *control,
 
     if ((control->flags & TUI_VISIBLE) == 0)
         return;
+    
+    /*
+     * Calculate child geometry before drawing.
+     */
+    tui_layout_children(control);
 
     if (control->cls != 0 &&
         control->cls->draw != 0) {
@@ -1361,6 +1708,10 @@ void tui_draw(TuiDesktop *desktop)
     desktop->control.height =
         tui_console_height();
 
+    desktop->cursor_visible = 0;
+
+    draw.desktop = desktop;
+
     draw.ox = 0;
     draw.oy = 0;
 
@@ -1372,6 +1723,10 @@ void tui_draw(TuiDesktop *desktop)
 
     tui_draw_tree(&desktop->control,
                   &draw);
+
+    tui_console_cursor(desktop->cursor_x,
+                       desktop->cursor_y,
+                       desktop->cursor_visible);
 
     tui_console_present();
 }
@@ -1499,10 +1854,66 @@ static int tui_dispatch_globals(TuiDesktop *desktop,
     return 0;
 }
 
+/*
+ * Mouse DOWN side effects: raise the floating window under the
+ * mouse and focus the nearest focusable control.
+ */
+static void tui_mouse_down(TuiDesktop *desktop, TuiControl *target)
+{
+    TuiControl *c;
+    int focused;
+
+    focused = 0;
+
+    for (c = target; c != 0; c = c->parent) {
+        if (!focused && tui_is_focusable(c)) {
+            tui_desktop_set_focus(desktop, c);
+            focused = 1;
+        }
+
+        if (c->cls == &window_class &&
+            c->dock == TUI_DOCK_NONE)
+            tui_bring_to_front(c);
+    }
+}
+
+static int tui_dispatch_mouse(TuiDesktop *desktop,
+                              TuiEvent *event)
+{
+    TuiControl *target;
+
+    if (desktop->capture != 0) {
+        target = desktop->capture;
+    } else {
+        target = tui_hit_test(&desktop->control,
+                              event->mouse_x,
+                              event->mouse_y);
+
+        if (target != 0 &&
+            event->mouse_action == TUI_MOUSE_DOWN)
+            tui_mouse_down(desktop, target);
+    }
+
+    /* Bubble up until a control handles it. */
+    while (target != 0) {
+        if (target->cls != 0 &&
+            target->cls->event != 0 &&
+            target->cls->event(target, event))
+            return 1;
+
+        target = target->parent;
+    }
+
+    return 0;
+}
+
 int tui_dispatch(TuiDesktop *desktop,
                  TuiEvent *event)
 {
     TuiControl *target;
+
+    if (event->type == TUI_EV_MOUSE)
+        return tui_dispatch_mouse(desktop, event);
 
     /*
      * Capture has absolute priority.
@@ -1580,6 +1991,21 @@ int tui_read_event(TuiEvent *event)
 
     event->command = TUI_CMD_NONE;
     event->source = 0;
+
+    event->mouse_x = 0;
+    event->mouse_y = 0;
+    event->mouse_action = 0;
+    event->mouse_buttons = 0;
+
+    if (event->key == TUI_KEY_MOUSE) {
+        event->type = TUI_EV_MOUSE;
+        event->key = TUI_KEY_NONE;
+
+        tui_console_mouse(&event->mouse_x,
+                          &event->mouse_y,
+                          &event->mouse_action,
+                          &event->mouse_buttons);
+    }
 
     return 1;
 }

@@ -1,7 +1,14 @@
+#include <stdio.h>
 #include <ncurses.h>
 #include "console.h"
 
 static int tui_colors;
+
+static int tui_mouse_x;
+static int tui_mouse_y;
+static int tui_mouse_action;
+static int tui_mouse_buttons;
+static int tui_mouse_held;
 
 int tui_console_init(void)
 {
@@ -23,6 +30,16 @@ int tui_console_init(void)
          */
     }
 
+    mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, NULL);
+    mouseinterval(0);
+
+    /*
+     * Ask xterm-like terminals for any-motion reporting; some
+     * ncurses versions only enable button events themselves.
+     */
+    putp("\033[?1003h");
+    fflush(stdout);
+
     curs_set(0);
     erase();
     return 1;
@@ -30,6 +47,8 @@ int tui_console_init(void)
 
 void tui_console_shutdown(void)
 {
+    putp("\033[?1003l");
+    fflush(stdout);
     endwin();
 }
 
@@ -145,6 +164,60 @@ void tui_console_cell(int x, int y, int ch, int attr)
     mvaddch(y, x, c | a);
 }
 
+static int tui_translate_mouse(void)
+{
+    MEVENT ev;
+    int changed;
+
+    if (getmouse(&ev) != OK)
+        return 0;
+
+    tui_mouse_x = ev.x;
+    tui_mouse_y = ev.y;
+    tui_mouse_action = TUI_MOUSE_MOVE;
+    tui_mouse_buttons = 0;
+    changed = 0;
+
+    if (ev.bstate & BUTTON1_PRESSED) {
+        tui_mouse_action = TUI_MOUSE_DOWN;
+        changed = TUI_MOUSE_LEFT;
+        tui_mouse_held |= changed;
+    } else if (ev.bstate & BUTTON1_RELEASED) {
+        tui_mouse_action = TUI_MOUSE_UP;
+        changed = TUI_MOUSE_LEFT;
+        tui_mouse_held &= ~changed;
+    } else if (ev.bstate & BUTTON3_PRESSED) {
+        tui_mouse_action = TUI_MOUSE_DOWN;
+        changed = TUI_MOUSE_RIGHT;
+        tui_mouse_held |= changed;
+    } else if (ev.bstate & BUTTON3_RELEASED) {
+        tui_mouse_action = TUI_MOUSE_UP;
+        changed = TUI_MOUSE_RIGHT;
+        tui_mouse_held &= ~changed;
+    } else if (ev.bstate & BUTTON2_PRESSED) {
+        tui_mouse_action = TUI_MOUSE_DOWN;
+        changed = TUI_MOUSE_MIDDLE;
+        tui_mouse_held |= changed;
+    } else if (ev.bstate & BUTTON2_RELEASED) {
+        tui_mouse_action = TUI_MOUSE_UP;
+        changed = TUI_MOUSE_MIDDLE;
+        tui_mouse_held &= ~changed;
+    }
+
+    tui_mouse_buttons =
+        changed != 0 ? changed : tui_mouse_held;
+
+    return 1;
+}
+
+void tui_console_mouse(int *x, int *y, int *action, int *buttons)
+{
+    *x = tui_mouse_x;
+    *y = tui_mouse_y;
+    *action = tui_mouse_action;
+    *buttons = tui_mouse_buttons;
+}
+
 int tui_console_key(void)
 {
     int ch;
@@ -179,6 +252,10 @@ int tui_console_key(void)
     case KEY_RIGHT:
         return TUI_KEY_RIGHT;
 
+    case KEY_MOUSE:
+        return tui_translate_mouse() ? TUI_KEY_MOUSE
+                                     : TUI_KEY_NONE;
+
     case KEY_F(1):  return TUI_KEY_F1;
     case KEY_F(2):  return TUI_KEY_F2;
     case KEY_F(3):  return TUI_KEY_F3;
@@ -195,6 +272,16 @@ int tui_console_key(void)
 
     default:
         return ch;
+    }
+}
+
+void tui_console_cursor(int x, int y, int visible)
+{
+    if (visible) {
+        curs_set(1);
+        move(y, x);
+    } else {
+        curs_set(0);
     }
 }
 

@@ -20,7 +20,29 @@ typedef struct App {
     TuiLabel label;
     TuiButton ok;
     TuiButton quit;
+
+    TuiWindow left;
+    TuiWindow right;
+    TuiWindow workspace;
+    TuiLabel test;
+    TuiWindow win_a;
+    TuiWindow win_b;
+
 } App;
+
+/* TEMP cursor test: remove after verifying. */
+static int test_cx = 1;
+static int test_cy = 1;
+static int test_on = 1;
+
+static void test_draw(TuiControl *control, TuiDraw *draw)
+{
+    (void)control;
+    if (test_on)
+        tui_draw_cursor(draw, test_cx, test_cy);
+}
+
+static const TuiClass test_class = { test_draw, 0 };
 
 typedef void (*CommandFn)(App *app);
 
@@ -199,6 +221,32 @@ int main(void)
         "Salir",
         CMD_QUIT);
 
+    tui_window_init(
+        &app.left,
+        0, 0,
+        12, 5,
+        "Left");
+
+    app.left.control.dock = TUI_DOCK_LEFT;
+    app.left.control.attr = TUI_ATTR(TUI_WHITE, TUI_RED);
+
+    tui_window_init(
+        &app.right,
+        0, 0,
+        15, 5,
+        "Right");
+
+    app.right.control.dock = TUI_DOCK_RIGHT;
+
+
+    tui_window_init(
+        &app.workspace,
+        0, 0,
+        1, 1,
+        "Workspace");
+
+    app.workspace.control.dock = TUI_DOCK_FILL;
+
     /*
      * Build control tree.
      *
@@ -210,6 +258,7 @@ int main(void)
      *        +-- OK
      *        +-- Quit
      */    
+/*
     tui_add(&app.desktop.control, &app.window.control);
     tui_add(&app.desktop.control, &app.menu_bar.control);
     tui_add(&app.desktop.control, &app.status_bar.control);
@@ -217,6 +266,34 @@ int main(void)
     tui_add(&app.window.control, &app.label.control);
     tui_add(&app.window.control, &app.ok.control);
     tui_add(&app.window.control, &app.quit.control);
+*/
+
+    tui_add(&app.desktop.control,
+            &app.menu_bar.control);
+
+    tui_add(&app.desktop.control,
+            &app.status_bar.control);
+
+    tui_add(&app.desktop.control,
+            &app.left.control);
+
+    tui_add(&app.desktop.control,
+            &app.right.control);
+
+    tui_add(&app.desktop.control,
+            &app.workspace.control);
+
+    /* TEMP mouse test: two overlapping floating windows. */
+    tui_window_init(&app.win_a, 20, 6, 30, 8, "Window A");
+    tui_window_init(&app.win_b, 34, 9, 30, 8, "Window B");
+    app.win_b.control.attr = TUI_ATTR(TUI_BLACK, TUI_GREEN);
+    tui_add(&app.desktop.control, &app.win_a.control);
+    tui_add(&app.desktop.control, &app.win_b.control);
+
+    /* TEMP: h/j/k/l move cursor, c toggles it. */
+    tui_label_init(&app.test, 2, 2, "cursor test (hjkl, c)");
+    app.test.control.cls = &test_class;
+    tui_add(&app.workspace.control, &app.test.control);
 
     /*
      * Initial focus.
@@ -235,6 +312,15 @@ int main(void)
         tui_draw(&app.desktop);
 
         tui_read_event(&event);
+
+        /* TEMP cursor test keys. */
+        if (event.type == TUI_EV_KEY) {
+            if (event.key == 'h') --test_cx;
+            if (event.key == 'l') ++test_cx;
+            if (event.key == 'k') --test_cy;
+            if (event.key == 'j') ++test_cy;
+            if (event.key == 'c') test_on = !test_on;
+        }
 
         if (event.type == TUI_EV_KEY &&
             event.key == TUI_KEY_ESCAPE &&
