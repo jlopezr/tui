@@ -24,6 +24,30 @@
 #define TUI_KEY_F11        0x12a
 #define TUI_KEY_F12        0x12b
 
+/*
+ * ------------------------------------------------------------
+ * Graphic characters
+ *
+ * Values >= 0x100 are abstract console characters.
+ * Each backend translates them to its native representation.
+ * ------------------------------------------------------------
+ */
+
+#define TUI_CH_HLINE   0x100
+#define TUI_CH_VLINE   0x101
+
+#define TUI_CH_TL      0x102
+#define TUI_CH_TR      0x103
+#define TUI_CH_BL      0x104
+#define TUI_CH_BR      0x105
+
+#define TUI_CH_LTEE    0x106
+#define TUI_CH_RTEE    0x107
+#define TUI_CH_TTEE    0x108
+#define TUI_CH_BTEE    0x109
+
+#define TUI_CH_CROSS   0x10A
+
 int  tui_console_init(void);
 void tui_console_shutdown(void);
 

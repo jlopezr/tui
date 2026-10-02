@@ -16,15 +16,14 @@ typedef struct TuiWindow TuiWindow;
 typedef struct TuiLabel TuiLabel;
 typedef struct TuiButton TuiButton;
 
-
 /*
  * Control flags
  */
-#define TUI_VISIBLE    0x0001
-#define TUI_ENABLED    0x0002
-#define TUI_FOCUSABLE  0x0004
-#define TUI_TABSTOP    0x0008
-#define TUI_GLOBAL     0x0010
+#define TUI_VISIBLE       0x0001
+#define TUI_ENABLED       0x0002
+#define TUI_FOCUSABLE     0x0004
+#define TUI_TABSTOP       0x0008
+#define TUI_GLOBAL        0x0010
 
 
 /*
@@ -65,6 +64,16 @@ typedef struct TuiButton TuiButton;
 
 #define TUI_ATTR(fg,bg) ((fg) | ((bg) << 4))
 
+/*
+ * Predefined themes i.e. attribute values.
+ */
+#define TUI_ATTR_DESKTOP        TUI_ATTR(TUI_LIGHTGRAY, TUI_CYAN)
+#define TUI_ATTR_WINDOW         TUI_ATTR(TUI_WHITE,     TUI_BLUE)
+#define TUI_ATTR_MENUBAR        TUI_ATTR(TUI_BLACK,     TUI_LIGHTGRAY)
+#define TUI_ATTR_MENU_SELECTED  TUI_ATTR(TUI_WHITE,     TUI_BLUE)
+#define TUI_ATTR_DISABLED       TUI_ATTR(TUI_DARKGRAY,  TUI_LIGHTGRAY)
+#define TUI_ATTR_STATUSBAR      TUI_ATTR(TUI_BLACK,     TUI_LIGHTGRAY)
+#define TUI_ATTR_LABEL          TUI_ATTR(TUI_LIGHTGRAY, TUI_BLUE)
 
 /*
  * Drawing context.
@@ -308,5 +317,26 @@ typedef struct TuiMenuBar {
 
     TuiPopupMenu popup;
 } TuiMenuBar;
+
+/*
+ * ------------------------------------------------------------
+ * Status bar
+ * ------------------------------------------------------------
+ */
+
+typedef struct TuiStatusItem {
+    const char *text;
+    int key;
+    int command;
+} TuiStatusItem;
+
+typedef struct TuiStatusBar {
+    TuiControl control;
+
+    TuiStatusItem *items;
+    int count;
+
+    const char *status;
+} TuiStatusBar;
 
 #endif /* TUI_H */

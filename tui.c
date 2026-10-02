@@ -89,22 +89,21 @@ static void tui_box(TuiDraw *d, int w, int h, int attr)
     if (w < 2 || h < 2)
         return;
 
-    tui_putc(d, 0,     0,     '+', attr);
-    tui_putc(d, w - 1, 0,     '+', attr);
-    tui_putc(d, 0,     h - 1, '+', attr);
-    tui_putc(d, w - 1, h - 1, '+', attr);
+    tui_putc(d, 0,     0,     TUI_CH_TL, attr);
+    tui_putc(d, w - 1, 0,     TUI_CH_TR, attr);
+    tui_putc(d, 0,     h - 1, TUI_CH_BL, attr);
+    tui_putc(d, w - 1, h - 1, TUI_CH_BR, attr);
 
     for (x = 1; x < w - 1; ++x) {
-        tui_putc(d, x, 0,     '-', attr);
-        tui_putc(d, x, h - 1, '-', attr);
+        tui_putc(d, x, 0,     TUI_CH_HLINE, attr);
+        tui_putc(d, x, h - 1, TUI_CH_HLINE, attr);
     }
 
     for (y = 1; y < h - 1; ++y) {
-        tui_putc(d, 0,     y, '|', attr);
-        tui_putc(d, w - 1, y, '|', attr);
+        tui_putc(d, 0,     y, TUI_CH_VLINE, attr);
+        tui_putc(d, w - 1, y, TUI_CH_VLINE, attr);
     }
 }
-
 
 /*
  * ------------------------------------------------------------
@@ -136,6 +135,9 @@ static void tui_control_init(TuiControl *control,
 
 void tui_add(TuiControl *parent, TuiControl *child)
 {
+    if (child->parent != 0)
+        return;
+
     child->parent = parent;
 
     child->prev = parent->last;
@@ -197,6 +199,9 @@ static int  popup_event(TuiControl *control, TuiEvent *event);
 static void menubar_draw(TuiControl *control, TuiDraw *draw);
 static int  menubar_event(TuiControl *control, TuiEvent *event);
 
+static void statusbar_draw(TuiControl *control, TuiDraw *draw);
+static int  statusbar_event(TuiControl *control, TuiEvent *event);
+
 static const TuiClass desktop_class = {
     desktop_draw,
     desktop_event
@@ -227,6 +232,11 @@ static const TuiClass popup_class = {
     popup_event
 };
 
+static const TuiClass statusbar_class = {
+    statusbar_draw,
+    statusbar_event
+};
+
 /*
  * ------------------------------------------------------------
  * Desktop
@@ -240,7 +250,7 @@ static void desktop_draw(TuiControl *control, TuiDraw *draw)
              control->width,
              control->height,
              ' ',
-             TUI_ATTR(TUI_LIGHTGRAY, TUI_BLUE));
+             TUI_ATTR_DESKTOP);
 }
 
 static int desktop_event(TuiControl *control, TuiEvent *event)
@@ -302,7 +312,7 @@ static void window_draw(TuiControl *control, TuiDraw *draw)
 
     window = (TuiWindow *)control;
 
-    attr = TUI_ATTR(TUI_WHITE, TUI_BLUE);
+    attr = TUI_ATTR_WINDOW;
 
     tui_fill(draw,
              0, 0,
@@ -377,7 +387,7 @@ static void label_draw(TuiControl *control, TuiDraw *draw)
     tui_text(draw,
              0, 0,
              label->text,
-             TUI_ATTR(TUI_LIGHTGRAY, TUI_BLUE));
+             TUI_ATTR_LABEL);
 }
 
 static int label_event(TuiControl *control, TuiEvent *event)
@@ -818,11 +828,8 @@ static void menubar_draw(TuiControl *control, TuiDraw *draw)
 
     bar = (TuiMenuBar *)control;
 
-    normal_attr =
-        TUI_ATTR(TUI_BLACK, TUI_LIGHTGRAY);
-
-    selected_attr =
-        TUI_ATTR(TUI_WHITE, TUI_BLUE);
+    normal_attr = TUI_ATTR_MENUBAR;
+    selected_attr = TUI_ATTR_MENU_SELECTED;
 
     tui_fill(draw,
              0, 0,
@@ -1096,6 +1103,162 @@ void tui_menubar_init(TuiMenuBar *bar,
     bar->popup.owner = bar;
     bar->popup.menu = 0;
     bar->popup.selected = -1;
+}
+
+/*
+ * ------------------------------------------------------------
+ * Status bar
+ * ------------------------------------------------------------
+ */
+
+static void statusbar_draw(TuiControl *control, TuiDraw *draw)
+{
+    TuiStatusBar *bar;
+    TuiStatusItem *item;
+    int attr;
+    int x;
+    int i;
+    int len;
+    int status_len;
+    int status_x;
+
+    bar = (TuiStatusBar *)control;
+
+    attr = TUI_ATTR_STATUSBAR;
+
+    /*
+     * Fill complete status bar.
+     */
+    tui_fill(draw,
+             0, 0,
+             control->width, 1,
+             ' ',
+             attr);
+
+    /*
+     * Draw command hints from left to right.
+     *
+     * For now the text contains only the description.
+     * The key name is generated separately.
+     */
+    x = 1;
+
+    for (i = 0; i < bar->count; ++i) {
+        item = &bar->items[i];
+
+        /*
+         * Leave a little separation between items.
+         */
+        if (i != 0)
+            x += 2;
+
+        /*
+         * Draw function key.
+         */
+        if (item->key >= TUI_KEY_F1 &&
+            item->key <= TUI_KEY_F12) {
+
+            int fn;
+
+            fn = item->key - TUI_KEY_F1 + 1;
+
+            tui_putc(draw, x, 0, 'F', attr);
+            ++x;
+
+            if (fn >= 10) {
+                tui_putc(draw,
+                         x, 0,
+                         '0' + (fn / 10),
+                         attr);
+                ++x;
+            }
+
+            tui_putc(draw,
+                     x, 0,
+                     '0' + (fn % 10),
+                     attr);
+            ++x;
+
+            tui_putc(draw, x, 0, ' ', attr);
+            ++x;
+        }
+
+        /*
+         * Description.
+         */
+        if (item->text != 0) {
+            len = tui_strlen(item->text);
+
+            tui_text(draw,
+                     x, 0,
+                     item->text,
+                     attr);
+
+            x += len;
+        }
+    }
+
+    /*
+     * Status text aligned to the right.
+     */
+    if (bar->status != 0) {
+        status_len = tui_strlen(bar->status);
+
+        status_x =
+            control->width - status_len - 1;
+
+        /*
+         * Do not overwrite the left-side items.
+         */
+        if (status_x > x) {
+            tui_text(draw,
+                     status_x, 0,
+                     bar->status,
+                     attr);
+        }
+    }
+}
+
+
+static int statusbar_event(TuiControl *control,
+                           TuiEvent *event)
+{
+    /*
+     * For now StatusBar is display-only.
+     *
+     * Later mouse clicks may generate the command associated
+     * with a TuiStatusItem.
+     */
+    (void)control;
+    (void)event;
+
+    return 0;
+}
+
+
+void tui_statusbar_init(TuiStatusBar *bar,
+                        TuiStatusItem *items,
+                        int count)
+{
+    tui_control_init(
+        &bar->control,
+        &statusbar_class,
+        0,
+        tui_console_height() - 1,
+        tui_console_width(),
+        1,
+        TUI_VISIBLE | TUI_ENABLED);
+
+    bar->items = items;
+    bar->count = count;
+    bar->status = 0;
+}
+
+
+void tui_statusbar_set_text(TuiStatusBar *bar,
+                            const char *text)
+{
+    bar->status = text;
 }
 
 /*

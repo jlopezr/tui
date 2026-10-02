@@ -73,6 +73,7 @@ void tui_console_cell(int x, int y, int ch, int attr)
     int bg;
     int pair;
     chtype a;
+    chtype c;
 
     a = 0;
 
@@ -91,7 +92,57 @@ void tui_console_cell(int x, int y, int ch, int attr)
             a |= A_BOLD;
     }
 
-    mvaddch(y, x, ((unsigned char)ch) | a);
+    switch (ch) {
+    case TUI_CH_HLINE:
+        c = ACS_HLINE;
+        break;
+
+    case TUI_CH_VLINE:
+        c = ACS_VLINE;
+        break;
+
+    case TUI_CH_TL:
+        c = ACS_ULCORNER;
+        break;
+
+    case TUI_CH_TR:
+        c = ACS_URCORNER;
+        break;
+
+    case TUI_CH_BL:
+        c = ACS_LLCORNER;
+        break;
+
+    case TUI_CH_BR:
+        c = ACS_LRCORNER;
+        break;
+
+    case TUI_CH_LTEE:
+        c = ACS_LTEE;
+        break;
+
+    case TUI_CH_RTEE:
+        c = ACS_RTEE;
+        break;
+
+    case TUI_CH_TTEE:
+        c = ACS_TTEE;
+        break;
+
+    case TUI_CH_BTEE:
+        c = ACS_BTEE;
+        break;
+
+    case TUI_CH_CROSS:
+        c = ACS_PLUS;
+        break;
+
+    default:
+        c = (chtype)(unsigned char)ch;
+        break;
+    }
+
+    mvaddch(y, x, c | a);
 }
 
 int tui_console_key(void)

@@ -1,8 +1,5 @@
 #include "tui.h"
 
-#define CMD_OK    100
-#define CMD_QUIT  101
-
 #define CMD_OK     100
 #define CMD_QUIT   101
 #define CMD_NEW    102
@@ -36,8 +33,14 @@ static TuiMenu menus[] = {
     { "Help", help_items, 1 }
 };
 
-int
-main(void)
+static TuiStatusItem status_items[] = {
+    { "Help", TUI_KEY_F1, CMD_ABOUT },
+    { "Save", TUI_KEY_F2, CMD_SAVE  },
+    { "Open", TUI_KEY_F3, CMD_OPEN  },
+    { "Run",  TUI_KEY_F5, CMD_RUN   }
+};
+
+int main(void)
 {
     TuiDesktop desktop;
     TuiWindow window;
@@ -45,7 +48,7 @@ main(void)
     TuiButton ok;
     TuiButton quit;
     TuiMenuBar menu_bar;
-
+    TuiStatusBar status_bar;
     TuiEvent event;
     int running;
 
@@ -62,6 +65,14 @@ main(void)
      */
     tui_menubar_init(&menu_bar, menus, 3);
 
+    tui_statusbar_init(
+        &status_bar,
+        status_items,
+        4);
+
+    tui_statusbar_set_text(
+        &status_bar,
+        "Ready");
 
     /*
      * Window
@@ -104,28 +115,14 @@ main(void)
      *        +-- Label
      *        +-- OK
      *        +-- Quit
-     */
-    tui_add(
-        &desktop.control,
-        &window.control);
+     */    
+    tui_add(&desktop.control, &window.control);
+    tui_add(&desktop.control, &menu_bar.control);
+    tui_add(&desktop.control, &status_bar.control);
     
-    tui_add(&desktop.control,
-        &window.control);
-
-    tui_add(&desktop.control,
-        &menu_bar.control);
-
-    tui_add(
-        &window.control,
-        &label.control);
-
-    tui_add(
-        &window.control,
-        &ok.control);
-
-    tui_add(
-        &window.control,
-        &quit.control);
+    tui_add(&window.control, &label.control);
+    tui_add(&window.control, &ok.control);
+    tui_add(&window.control, &quit.control);
 
     /*
      * Initial focus.
@@ -149,15 +146,9 @@ main(void)
             event.key == TUI_KEY_ESCAPE &&
             desktop.capture == 0) {
 
-            running = 0;
-
-        } else if (event.type == TUI_EV_KEY &&
-                event.key == TUI_KEY_F10) {
-
-            tui_menubar_activate(&menu_bar);
+                running = 0;
 
         } else {
-
             tui_dispatch(&desktop, &event);
         }
 
