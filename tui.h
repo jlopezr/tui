@@ -16,6 +16,7 @@ typedef struct TuiWindow TuiWindow;
 typedef struct TuiLabel TuiLabel;
 typedef struct TuiButton TuiButton;
 typedef struct TuiEdit TuiEdit;
+typedef struct TuiListBox TuiListBox;
 
 /*
  * Control flags
@@ -125,7 +126,7 @@ struct TuiEvent {
 
     /*
      * Mouse: x/y are global screen coordinates.
-     * mouse_buttons is the button involved in a DOWN/UP event
+     * mouse_buttons is the button involved in a mouse action
      * (TUI_MOUSE_*); it is 0 for MOVE.
      */
     int mouse_x;
@@ -435,5 +436,39 @@ struct TuiEdit {
     int cursor;
     int offset;
 };
+
+/*
+ * List box
+ */
+struct TuiListBox {
+    TuiControl control;
+
+    const char **items;
+    int count;
+
+    int selected;
+    int offset;
+    int command;
+};
+
+void tui_listbox_init(TuiListBox *list,
+                      int x,
+                      int y,
+                      int width,
+                      int height,
+                      const char **items,
+                      int count);
+
+void tui_listbox_set_items(TuiListBox *list,
+                           const char **items,
+                           int count);
+
+int tui_listbox_get_selected(TuiListBox *list);
+
+void tui_listbox_set_selected(TuiListBox *list,
+                              int index);
+
+void tui_listbox_set_command(TuiListBox *list,
+                             int command);
 
 #endif /* TUI_H */

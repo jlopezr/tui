@@ -1,2 +1,4 @@
 demo
 *.o
+test/test_controls
+/coverage/

@@ -15,6 +15,8 @@
 #define TUI_KEY_DELETE     0x116
 #define TUI_KEY_INSERT     0x117
 #define TUI_KEY_BACKSPACE  0x118
+#define TUI_KEY_PAGEUP     0x119
+#define TUI_KEY_PAGEDOWN   0x11a
 
 /* Returned by tui_console_key(); details via tui_console_mouse(). */
 #define TUI_KEY_MOUSE      0x130
@@ -23,6 +25,7 @@
 #define TUI_MOUSE_MOVE     1
 #define TUI_MOUSE_DOWN     2
 #define TUI_MOUSE_UP       3
+#define TUI_MOUSE_DOUBLE  4
 
 #define TUI_MOUSE_LEFT     0x01
 #define TUI_MOUSE_RIGHT    0x02

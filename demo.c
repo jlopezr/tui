@@ -8,6 +8,20 @@
 #define CMD_RUN    105
 #define CMD_STOP   106
 #define CMD_ABOUT  107
+#define CMD_LIST_OPEN 108
+
+static const char *demo_items[] = {
+    "Apple",
+    "Banana",
+    "Orange",
+    "Peach",
+    "Pear",
+    "Strawberry",
+    "Watermelon",
+    "Cherry",
+    "Lemon",
+    "Mango"
+};
 
 typedef struct App {
     int running;
@@ -30,6 +44,7 @@ typedef struct App {
 
     char edit_buffer[64];
     TuiEdit edit;
+    TuiListBox listbox;
 
 } App;
 
@@ -89,6 +104,19 @@ static void cmd_about(App *app)
         "Help -> About");
 }
 
+static void cmd_list_open(App *app)
+{
+    int selected;
+
+    selected = tui_listbox_get_selected(&app->listbox);
+
+    if (selected >= 0 &&
+        selected < app->listbox.count &&
+        app->listbox.items[selected] != 0)
+        tui_label_set_text(&app->label,
+                           app->listbox.items[selected]);
+}
+
 static void cmd_quit(App *app)
 {
     app->running = 0;
@@ -102,6 +130,7 @@ static CommandEntry command_table[] = {
     { CMD_RUN,   cmd_run   },
     { CMD_STOP,  cmd_stop  },
     { CMD_ABOUT, cmd_about },
+    { CMD_LIST_OPEN, cmd_list_open },
     { CMD_QUIT,  cmd_quit  }
 };
 
@@ -226,6 +255,16 @@ int main(void)
         "Right");
 
     app.right.control.dock = TUI_DOCK_RIGHT;
+    app.right.control.attr = TUI_ATTR(TUI_BLACK, TUI_YELLOW);
+
+    tui_window_init(
+        &app.win_b,
+        0, 0,
+        30, 8,
+        "Window B");
+
+    app.win_b.control.attr = TUI_ATTR(TUI_BLACK, TUI_GREEN);
+
 
 
     tui_window_init(
@@ -275,6 +314,7 @@ int main(void)
     /* TEMP mouse test: two overlapping floating windows. */
     tui_window_init(&app.win_a, 20, 6, 30, 8, "Window A");
     tui_window_init(&app.win_b, 34, 9, 30, 8, "Window B");
+
     app.win_b.control.attr = TUI_ATTR(TUI_BLACK, TUI_GREEN);
     tui_add(&app.desktop.control, &app.win_a.control);
     tui_add(&app.desktop.control, &app.win_b.control);
@@ -282,6 +322,20 @@ int main(void)
     tui_add(&app.win_a.control, &app.label.control);
     app.ok.control.x = 2; app.ok.control.y = 1;
     app.label.control.x = 2; app.label.control.y = 3;
+
+    tui_listbox_init(
+        &app.listbox,
+        2, 1,
+        24, 3,
+        demo_items,
+        10);
+
+    tui_listbox_set_command(&app.listbox,
+                            CMD_LIST_OPEN);
+
+    tui_add(
+        &app.win_b.control,
+        &app.listbox.control);
 
     tui_edit_init(
         &app.edit,

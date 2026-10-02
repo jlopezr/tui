@@ -30,7 +30,7 @@ int tui_console_init(void)
     }
 
     mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, NULL);
-    mouseinterval(0);
+    mouseinterval(200);
 
     /*
      * Ask xterm-like terminals for any-motion reporting; some
@@ -177,6 +177,12 @@ static int tui_translate_mouse(void)
     tui_mouse_buttons = 0;
     changed = 0;
 
+#ifdef BUTTON1_DOUBLE_CLICKED
+    if (ev.bstate & BUTTON1_DOUBLE_CLICKED) {
+        tui_mouse_action = TUI_MOUSE_DOUBLE;
+        changed = TUI_MOUSE_LEFT;
+    } else
+#endif
     if (ev.bstate & BUTTON1_PRESSED) {
         tui_mouse_action = TUI_MOUSE_DOWN;
         changed = TUI_MOUSE_LEFT;
@@ -265,6 +271,12 @@ int tui_console_key(void)
 
     case KEY_END:
         return TUI_KEY_END;
+
+    case KEY_PPAGE:
+        return TUI_KEY_PAGEUP;
+
+    case KEY_NPAGE:
+        return TUI_KEY_PAGEDOWN;
 
     case KEY_DC:
         return TUI_KEY_DELETE;
