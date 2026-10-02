@@ -1,4 +1,7 @@
+#define _XOPEN_SOURCE_EXTENDED 1
 #include <stdio.h>
+#include <locale.h>
+#include <string.h>
 #include <sys/time.h>
 #include <ncurses.h>
 #include "console.h"
@@ -6,6 +9,7 @@
 #define TUI_MOUSE_DOUBLE_CLICK_MS 200
 
 static int tui_colors;
+static int tui_utf8;
 
 static int tui_mouse_x;
 static int tui_mouse_y;
@@ -53,8 +57,37 @@ static int tui_mouse_is_double_click(int x, int y)
            elapsed_ms <= TUI_MOUSE_DOUBLE_CLICK_MS;
 }
 
+static int tui_locale_is_utf8(void)
+{
+    const char *loc;
+
+    loc = setlocale(LC_CTYPE, 0);
+
+    return loc != 0 &&
+           (strstr(loc, "UTF-8") != 0 ||
+            strstr(loc, "utf8") != 0 ||
+            strstr(loc, "UTF8") != 0);
+}
+
+/* Double-line glyph for an abstract character, or 0. */
+static wchar_t tui_double_glyph(int ch)
+{
+    switch (ch) {
+    case TUI_CH_DHLINE: return 0x2550;
+    case TUI_CH_DVLINE: return 0x2551;
+    case TUI_CH_DTL:    return 0x2554;
+    case TUI_CH_DTR:    return 0x2557;
+    case TUI_CH_DBL:    return 0x255A;
+    case TUI_CH_DBR:    return 0x255D;
+    }
+
+    return 0;
+}
+
 int tui_console_init(void)
 {
+    setlocale(LC_ALL, "");
+    tui_utf8 = tui_locale_is_utf8();
     initscr();
     cbreak();
     noecho();
@@ -167,27 +200,45 @@ void tui_console_cell(int x, int y, int ch, int attr)
             a |= A_BOLD;
     }
 
+    if (tui_utf8 && tui_double_glyph(ch) != 0) {
+        cchar_t cc;
+        wchar_t ws[2];
+
+        ws[0] = tui_double_glyph(ch);
+        ws[1] = 0;
+        setcchar(&cc, ws, (attr_t)(a & ~A_COLOR),
+                 (short)PAIR_NUMBER(a), 0);
+        mvadd_wch(y, x, &cc);
+        return;
+    }
+
     switch (ch) {
+    case TUI_CH_DHLINE:
     case TUI_CH_HLINE:
         c = ACS_HLINE;
         break;
 
+    case TUI_CH_DVLINE:
     case TUI_CH_VLINE:
         c = ACS_VLINE;
         break;
 
+    case TUI_CH_DTL:
     case TUI_CH_TL:
         c = ACS_ULCORNER;
         break;
 
+    case TUI_CH_DTR:
     case TUI_CH_TR:
         c = ACS_URCORNER;
         break;
 
+    case TUI_CH_DBL:
     case TUI_CH_BL:
         c = ACS_LLCORNER;
         break;
 
+    case TUI_CH_DBR:
     case TUI_CH_BR:
         c = ACS_LRCORNER;
         break;

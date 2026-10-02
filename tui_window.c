@@ -14,12 +14,104 @@ const TuiClass tui_window_class = {
  * ------------------------------------------------------------
  */
 
+/* True when the focused control is the window or one of its descendants. */
+static int window_is_active(TuiControl *control)
+{
+    TuiDesktop *desktop;
+    TuiControl *c;
+
+    desktop = tui_find_desktop(control);
+
+    if (desktop == 0)
+        return 0;
+
+    for (c = desktop->focused; c != 0; c = c->parent) {
+        if (c == control)
+            return 1;
+    }
+
+    return 0;
+}
+
+static void window_frame(TuiDraw *draw, int w, int h, int attr,
+                         int double_line)
+{
+    int hl;
+    int vl;
+    int tl;
+    int tr;
+    int bl;
+    int br;
+    int x;
+    int y;
+
+    if (w < 2 || h < 2)
+        return;
+
+    hl = double_line ? TUI_CH_DHLINE : TUI_CH_HLINE;
+    vl = double_line ? TUI_CH_DVLINE : TUI_CH_VLINE;
+    tl = double_line ? TUI_CH_DTL : TUI_CH_TL;
+    tr = double_line ? TUI_CH_DTR : TUI_CH_TR;
+    bl = double_line ? TUI_CH_DBL : TUI_CH_BL;
+    br = double_line ? TUI_CH_DBR : TUI_CH_BR;
+
+    tui_putc(draw, 0,     0,     tl, attr);
+    tui_putc(draw, w - 1, 0,     tr, attr);
+    tui_putc(draw, 0,     h - 1, bl, attr);
+    tui_putc(draw, w - 1, h - 1, br, attr);
+
+    for (x = 1; x < w - 1; ++x) {
+        tui_putc(draw, x, 0,     hl, attr);
+        tui_putc(draw, x, h - 1, hl, attr);
+    }
+
+    for (y = 1; y < h - 1; ++y) {
+        tui_putc(draw, 0,     y, vl, attr);
+        tui_putc(draw, w - 1, y, vl, attr);
+    }
+}
+
+/*
+ * X of the space that precedes the title, or -1 when it does not
+ * fit. len is the visible title length, already truncated.
+ */
+static int window_title_x(const TuiWindow *window, int width, int len)
+{
+    int block;
+    int x;
+
+    block = len + 2;
+
+    switch (window->flags & TUI_WINDOW_TITLE_MASK) {
+    case TUI_WINDOW_TITLE_LEFT:
+        x = 2;
+        break;
+
+    case TUI_WINDOW_TITLE_RIGHT:
+        x = width - 2 - block;
+        break;
+
+    default:
+        x = (width - block) / 2;
+        break;
+    }
+
+    if (x > width - 1 - block)
+        x = width - 1 - block;
+
+    if (x < 1)
+        x = 1;
+
+    return x;
+}
+
 static void window_draw(TuiControl *control, TuiDraw *draw)
 {
     TuiWindow *window;
     int attr;
     int title_len;
     int title_x;
+    int i;
 
     window = (TuiWindow *)control;
 
@@ -32,33 +124,33 @@ static void window_draw(TuiControl *control, TuiDraw *draw)
              ' ',
              attr);
 
-    tui_box(draw,
-            control->width,
-            control->height,
-            attr);
+    window_frame(draw,
+                 control->width,
+                 control->height,
+                 attr,
+                 (window->flags & TUI_WINDOW_ACTIVE_DOUBLE) &&
+                 window_is_active(control));
 
-    if (window->title != 0) {
+    if (window->title != 0 && window->title[0] != '\0') {
         if (window->title_attr != TUI_ATTR_INHERIT)
             attr = window->title_attr;
-        title_len = tui_strlen(window->title);
-        title_x = (control->width - title_len - 2) / 2;
 
-        if (title_x < 1)
-            title_x = 1;
+        /* Keep the corners free: " title " must fit in width - 2. */
+        title_len = tui_min(tui_strlen(window->title),
+                            control->width - 4);
+
+        if (title_len < 1)
+            return;
+
+        title_x = window_title_x(window, control->width, title_len);
 
         tui_putc(draw, title_x, 0, ' ', attr);
 
-        tui_text(draw,
-                 title_x + 1,
-                 0,
-                 window->title,
-                 attr);
+        for (i = 0; i < title_len; ++i)
+            tui_putc(draw, title_x + 1 + i, 0,
+                     (unsigned char)window->title[i], attr);
 
-        tui_putc(draw,
-                 title_x + title_len + 1,
-                 0,
-                 ' ',
-                 attr);
+        tui_putc(draw, title_x + title_len + 1, 0, ' ', attr);
     }
 }
 
@@ -100,6 +192,14 @@ static void window_drag_to(TuiControl *control,
     control->y = sy - py;
 }
 
+static void window_cancel_drag(TuiWindow *window, TuiDesktop *desktop)
+{
+    window->dragging = 0;
+
+    if (desktop->capture == &window->control)
+        tui_desktop_clear_capture(desktop);
+}
+
 static int window_event(TuiControl *control, TuiEvent *event)
 {
     TuiWindow *window;
@@ -115,6 +215,11 @@ static int window_event(TuiControl *control, TuiEvent *event)
 
     if (desktop == 0)
         return 0;
+
+    if (window->dragging && (window->flags & TUI_WINDOW_FIXED)) {
+        window_cancel_drag(window, desktop);
+        return 1;
+    }
 
     if (window->dragging) {
         if (event->mouse_action == TUI_MOUSE_MOVE) {
@@ -132,7 +237,8 @@ static int window_event(TuiControl *control, TuiEvent *event)
 
     if (event->mouse_action == TUI_MOUSE_DOWN &&
         (event->mouse_buttons & TUI_MOUSE_LEFT) &&
-        control->dock == TUI_DOCK_NONE) {
+        control->dock == TUI_DOCK_NONE &&
+        !(window->flags & TUI_WINDOW_FIXED)) {
 
         tui_control_screen_to_local(control,
                                     event->mouse_x,
@@ -170,6 +276,38 @@ void tui_window_init(TuiWindow *window,
 
     window->control.attr = TUI_ATTR_WINDOW;
     window->title_attr = TUI_ATTR_INHERIT;
+    window->flags = 0;
+}
+
+void tui_window_set_flags(TuiWindow *window, unsigned flags)
+{
+    TuiDesktop *desktop;
+
+    window->flags = flags;
+
+    if (window->dragging && (flags & TUI_WINDOW_FIXED)) {
+        desktop = tui_find_desktop(&window->control);
+
+        if (desktop != 0)
+            window_cancel_drag(window, desktop);
+        else
+            window->dragging = 0;
+    }
+}
+
+unsigned tui_window_get_flags(const TuiWindow *window)
+{
+    return window->flags;
+}
+
+void tui_window_add_flags(TuiWindow *window, unsigned flags)
+{
+    tui_window_set_flags(window, window->flags | flags);
+}
+
+void tui_window_remove_flags(TuiWindow *window, unsigned flags)
+{
+    tui_window_set_flags(window, window->flags & ~flags);
 }
 
 

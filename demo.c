@@ -214,11 +214,20 @@ static void demo_build_controls(App *app)
     tui_window_init(&app->label_window, 0, 0, 25, 8, "Label");
     app->label_window.control.attr = TUI_ATTR(TUI_WHITE, TUI_BLUE);
     tui_window_init(&app->button_window, 26, 0, 25, 8, "Button");
+    tui_window_set_flags(&app->button_window,
+                         TUI_WINDOW_TITLE_LEFT);
     app->button_window.control.attr = TUI_ATTR(TUI_BLACK, TUI_CYAN);
     tui_window_init(&app->edit_window, 0, 9, 25, 8, "Edit");
     app->edit_window.control.attr = TUI_ATTR(TUI_BLACK, TUI_YELLOW);
+    tui_window_set_flags(&app->edit_window,
+                         TUI_WINDOW_ACTIVE_DOUBLE |
+                         TUI_WINDOW_TITLE_CENTER);
     tui_window_init(&app->list_window, 26, 9, 25, 8, "ListBox");
     app->list_window.control.attr = TUI_ATTR(TUI_WHITE, TUI_RED);
+    tui_window_set_flags(&app->list_window,
+                         TUI_WINDOW_FIXED |
+                         TUI_WINDOW_ACTIVE_DOUBLE |
+                         TUI_WINDOW_TITLE_RIGHT);
 
     tui_label_init(&app->label, 1, 2, "A simple text label");
 

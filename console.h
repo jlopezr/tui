@@ -67,6 +67,14 @@
 #define TUI_CH_BTEE    0x109
 
 #define TUI_CH_CROSS   0x10A
+
+/* Double-line frame; backends may degrade them to single lines. */
+#define TUI_CH_DHLINE  0x10B
+#define TUI_CH_DVLINE  0x10C
+#define TUI_CH_DTL     0x10D
+#define TUI_CH_DTR     0x10E
+#define TUI_CH_DBL     0x10F
+#define TUI_CH_DBR     0x110
 int  tui_console_init(void);
 void tui_console_shutdown(void);
 

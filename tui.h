@@ -212,6 +212,19 @@ struct TuiDesktop {
 
 
 /*
+ * Window flags. flags == 0: movable, single border, centered title.
+ * Title alignment bits: 0 = center; the unused 0x000C is treated
+ * as center.
+ */
+#define TUI_WINDOW_FIXED          0x0001
+#define TUI_WINDOW_ACTIVE_DOUBLE  0x0002
+
+#define TUI_WINDOW_TITLE_CENTER   0x0000
+#define TUI_WINDOW_TITLE_LEFT     0x0004
+#define TUI_WINDOW_TITLE_RIGHT    0x0008
+#define TUI_WINDOW_TITLE_MASK     0x000C
+
+/*
  * Window
  */
 struct TuiWindow {
@@ -226,6 +239,8 @@ struct TuiWindow {
 
     /* Title attribute; TUI_ATTR_INHERIT uses the window's attribute. */
     int title_attr;
+
+    unsigned flags;
 };
 
 
@@ -341,6 +356,10 @@ void tui_window_init(TuiWindow *window,
                      int width,
                      int height,
                      const char *title);
+void tui_window_set_flags(TuiWindow *window, unsigned flags);
+unsigned tui_window_get_flags(const TuiWindow *window);
+void tui_window_add_flags(TuiWindow *window, unsigned flags);
+void tui_window_remove_flags(TuiWindow *window, unsigned flags);
 
 
 /*

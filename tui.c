@@ -795,6 +795,40 @@ static int tui_dispatch_globals(TuiDesktop *desktop,
  * Mouse DOWN/DOUBLE side effects: raise the floating window under
  * the mouse and focus the nearest focusable control.
  */
+/* True when 'control' is 'ancestor' or one of its descendants. */
+static int tui_is_within(TuiControl *control, TuiControl *ancestor)
+{
+    for (; control != 0; control = control->parent) {
+        if (control == ancestor)
+            return 1;
+    }
+
+    return 0;
+}
+
+/*
+ * A click on a window surface with no focusable control under it
+ * activates that window: focus goes to its first focusable
+ * descendant, or to the window itself when it has none. A window
+ * that already holds the focus is left alone.
+ */
+static void tui_focus_window(TuiDesktop *desktop, TuiControl *window)
+{
+    TuiControl *c;
+
+    if (tui_is_within(desktop->focused, window))
+        return;
+
+    for (c = window->first; c != 0; c = tui_tree_next(window, c)) {
+        if (tui_is_focusable(c)) {
+            tui_desktop_set_focus(desktop, c);
+            return;
+        }
+    }
+
+    tui_desktop_set_focus(desktop, window);
+}
+
 static void tui_mouse_down(TuiDesktop *desktop, TuiControl *target)
 {
     TuiControl *c;
@@ -805,6 +839,11 @@ static void tui_mouse_down(TuiDesktop *desktop, TuiControl *target)
     for (c = target; c != 0; c = c->parent) {
         if (!focused && tui_is_focusable(c)) {
             tui_desktop_set_focus(desktop, c);
+            focused = 1;
+        }
+
+        if (!focused && c->cls == &tui_window_class) {
+            tui_focus_window(desktop, c);
             focused = 1;
         }
 
