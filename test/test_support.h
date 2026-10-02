@@ -42,5 +42,6 @@ void test_window_suite(void);
 void test_menu_suite(void);
 void test_statusbar_suite(void);
 void test_label_suite(void);
+void test_core_suite(void);
 
 #endif

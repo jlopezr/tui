@@ -14,6 +14,7 @@ int main(void)
     test_menu_suite();
     test_statusbar_suite();
     test_label_suite();
+    test_core_suite();
 
     printf("%d checks, %d failures\n",
            test_checks,

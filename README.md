@@ -50,9 +50,10 @@ make test
 
 La suite organiza las pruebas por control (`test_listbox.c`, `test_edit.c`,
 `test_button.c`, `test_window.c`, `test_menu.c`, `test_statusbar.c` y
-`test_label.c`). `test_support.c` comparte la consola simulada y los helpers;
-no requiere ncurses ni una terminal interactiva. Se compila con los mismos
-flags C89 estrictos que el resto del proyecto.
+`test_label.c` y `test_core.c` para árbol, layout, hit-testing y foco.
+`test_support.c` comparte la consola simulada y los helpers; no requiere
+ncurses ni una terminal interactiva. Se compila con los mismos flags C89
+estrictos que el resto del proyecto.
 
 Para generar un informe de cobertura de líneas del core y los controles con
 LLVM. El informe excluye los ficheros de tests y los headers:
@@ -77,7 +78,7 @@ perfiles quedan en `coverage/`, que se puede limpiar con `make clean`.
 - `console.h`: contrato del backend.
 - `console_ncurses.c`: backend de PC/macOS.
 - `demo.c`: punto de entrada y aplicación de ejemplo.
-- `test/test_*.c`: pruebas unitarias separadas por control.
+- `test/test_*.c`: pruebas unitarias separadas por control y core.
 - `test/test_support.c`, `test/test_support.h`: consola simulada y helpers.
 - `Makefile`: build.
 
