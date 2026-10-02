@@ -14,7 +14,42 @@ static const TuiClass listbox_class = {
  * ------------------------------------------------------------
  */
 
-static void listbox_ensure_selected_visible(TuiListBox *list)
+static void listbox_sync_scrollbar(TuiListBox *list);
+
+static int listbox_content_width(const TuiListBox *list)
+{
+    if (list->scrollbar.control.flags & TUI_VISIBLE)
+        return tui_max(0, list->control.width - 1);
+
+    return list->control.width;
+}
+
+/* The internal scroll bar is a hidden child with a private class. */
+static void listbox_scroll_draw(TuiControl *control, TuiDraw *draw)
+{
+    tui_scrollbar_class.draw(control, draw);
+}
+
+static int listbox_scroll_event(TuiControl *control, TuiEvent *event)
+{
+    TuiListBox *list;
+    int handled;
+
+    handled = tui_scrollbar_class.event(control, event);
+    list = (TuiListBox *)control->parent;
+
+    if (list != 0)
+        list->offset = tui_scrollbar_get_value(&list->scrollbar);
+
+    return handled;
+}
+
+static const TuiClass listbox_scroll_class = {
+    listbox_scroll_draw,
+    listbox_scroll_event
+};
+
+static void listbox_do_ensure_visible(TuiListBox *list)
 {
     int height;
     int max_offset;
@@ -54,6 +89,52 @@ static void listbox_ensure_selected_visible(TuiListBox *list)
         list->offset = max_offset;
 }
 
+static void listbox_ensure_selected_visible(TuiListBox *list)
+{
+    listbox_do_ensure_visible(list);
+    listbox_sync_scrollbar(list);
+}
+
+/* Single place that derives scroll bar state from the list state. */
+static void listbox_sync_scrollbar(TuiListBox *list)
+{
+    TuiScrollBar *sb;
+    int height;
+    int max_offset;
+
+    sb = &list->scrollbar;
+    height = list->control.height;
+
+    if (!list->scrollbar_enabled ||
+        height <= 0 ||
+        list->count <= height) {
+        sb->control.flags &= ~TUI_VISIBLE;
+
+        if (list->scrollbar_enabled)
+            list->offset = 0;
+
+        return;
+    }
+
+    max_offset = list->count - height;
+
+    if (list->offset > max_offset)
+        list->offset = max_offset;
+
+    if (list->offset < 0)
+        list->offset = 0;
+
+    sb->control.flags |= TUI_VISIBLE;
+    sb->control.x = list->control.width - 1;
+    sb->control.y = 0;
+    sb->control.width = 1;
+    sb->control.height = height;
+
+    tui_scrollbar_set_range(sb, 0, list->count);
+    tui_scrollbar_set_page(sb, height);
+    tui_scrollbar_set_value(sb, list->offset);
+}
+
 void tui_listbox_init(TuiListBox *list,
                       int x,
                       int y,
@@ -71,6 +152,13 @@ void tui_listbox_init(TuiListBox *list,
                      TUI_FOCUSABLE |
                      TUI_TABSTOP);
 
+    tui_scrollbar_init(&list->scrollbar, 0, 0, 1,
+                       TUI_VERTICAL, TUI_CMD_NONE);
+    list->scrollbar.control.cls = &listbox_scroll_class;
+    list->scrollbar.control.flags = TUI_ENABLED;
+    list->scrollbar_enabled = 0;
+    tui_add(&list->control, &list->scrollbar.control);
+
     tui_listbox_set_items(list, items, count);
     list->command = TUI_CMD_NONE;
 }
@@ -87,6 +175,7 @@ void tui_listbox_set_items(TuiListBox *list,
         list->count = 0;
         list->selected = -1;
         list->offset = 0;
+        listbox_sync_scrollbar(list);
         return;
     }
 
@@ -94,6 +183,16 @@ void tui_listbox_set_items(TuiListBox *list,
     list->count = count;
     list->selected = 0;
     list->offset = 0;
+    listbox_sync_scrollbar(list);
+}
+
+void tui_listbox_set_scrollbar(TuiListBox *list, int enabled)
+{
+    if (list == 0)
+        return;
+
+    list->scrollbar_enabled = enabled != 0;
+    listbox_sync_scrollbar(list);
 }
 
 int tui_listbox_get_selected(TuiListBox *list)
@@ -113,6 +212,7 @@ void tui_listbox_set_selected(TuiListBox *list,
     if (list->count <= 0) {
         list->selected = -1;
         list->offset = 0;
+        listbox_sync_scrollbar(list);
         return;
     }
 
@@ -207,15 +307,19 @@ static void listbox_draw(TuiControl *control, TuiDraw *draw)
     int row;
     int index;
     int x;
+    int width;
     int attr;
     const char *text;
 
     list = (TuiListBox *)control;
     attr = tui_control_attr(control);
 
+    listbox_sync_scrollbar(list);
+    width = listbox_content_width(list);
+
     tui_fill(draw,
              0, 0,
-             control->width,
+             width,
              control->height,
              ' ',
              attr);
@@ -236,7 +340,7 @@ static void listbox_draw(TuiControl *control, TuiDraw *draw)
         }
 
         tui_fill(draw, 0, row,
-                 control->width, 1,
+                 width, 1,
                  ' ', attr);
 
         text = list->items[index];
@@ -245,7 +349,7 @@ static void listbox_draw(TuiControl *control, TuiDraw *draw)
             continue;
 
         for (x = 0;
-             x < control->width && text[x] != '\0';
+             x < width && text[x] != '\0';
              ++x) {
             tui_putc(draw, x, row,
                      (unsigned char)text[x],
@@ -274,7 +378,9 @@ static int listbox_event(TuiControl *control, TuiEvent *event)
                                     &local_x,
                                     &local_y);
 
-        (void)local_x;
+        /* The scroll bar column never selects a row. */
+        if (local_x >= listbox_content_width(list))
+            return 1;
 
         if (local_y < 0 || local_y >= control->height)
             return 0;

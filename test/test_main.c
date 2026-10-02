@@ -18,6 +18,7 @@ int main(void)
     test_checkbox_suite();
     test_radiobutton_suite();
     test_combobox_suite();
+    test_scrollbar_suite();
 
     printf("%d checks, %d failures\n",
            test_checks,

@@ -85,6 +85,7 @@ static void combobox_close(TuiComboBox *combo, int commit,
 
     changed = combo->selected != combo->original_selected;
     combo->open = 0;
+    combo->popup_list.scrollbar.dragging = 0;
 
     if (desktop != 0) {
         if (combo->popup_window.control.parent != 0)
@@ -204,15 +205,37 @@ static int combobox_popup_mouse(TuiComboBox *combo,
 {
     TuiDesktop *desktop;
     TuiControl *target;
+    TuiControl *scroll;
 
     desktop = tui_find_desktop(&combo->control);
 
     if (desktop == 0)
         return 0;
 
+    scroll = &combo->popup_list.scrollbar.control;
+
+    /*
+     * The scroll bar takes the capture for its drag; the combo box
+     * gets it back so it keeps owning the popup, and forwards the
+     * rest of the drag itself.
+     */
+    if (combo->popup_list.scrollbar.dragging) {
+        scroll->cls->event(scroll, event);
+        return 1;
+    }
+
     target = tui_hit_test(&desktop->control,
                           event->mouse_x,
                           event->mouse_y);
+
+    if (target == scroll) {
+        scroll->cls->event(scroll, event);
+
+        if (combo->popup_list.scrollbar.dragging)
+            tui_desktop_set_capture(desktop, &combo->control);
+
+        return 1;
+    }
 
     if (target == &combo->popup_list.control) {
         if (target->cls != 0 && target->cls->event != 0)
@@ -386,6 +409,12 @@ void tui_combobox_set_selected(TuiComboBox *combo, int index)
 
     if (combo->open)
         tui_listbox_set_selected(&combo->popup_list, index);
+}
+
+void tui_combobox_set_scrollbar(TuiComboBox *combo, int enabled)
+{
+    if (combo != 0)
+        tui_listbox_set_scrollbar(&combo->popup_list, enabled);
 }
 
 void tui_combobox_set_command(TuiComboBox *combo, int command)

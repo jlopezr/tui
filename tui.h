@@ -20,6 +20,7 @@ typedef struct TuiListBox TuiListBox;
 typedef struct TuiCheckBox TuiCheckBox;
 typedef struct TuiRadioButton TuiRadioButton;
 typedef struct TuiComboBox TuiComboBox;
+typedef struct TuiScrollBar TuiScrollBar;
 
 /*
  * Control flags
@@ -267,6 +268,34 @@ struct TuiButton {
 };
 
 /*
+ * Scroll bar
+ *
+ * Model: min/max is the whole logical range, page is the visible
+ * amount and value is the first visible position. The largest
+ * effective value is max - page (or min when page >= max - min).
+ * The setters keep the state normalized and never emit commands;
+ * only user interaction turns a changed value into a command.
+ */
+#define TUI_VERTICAL    0
+#define TUI_HORIZONTAL  1
+
+struct TuiScrollBar {
+    TuiControl control;
+
+    int min;
+    int max;
+    int value;
+    int page;
+
+    int orientation;
+    int command;
+
+    /* Thumb drag; drag_offset is the grabbed cell inside the thumb. */
+    int dragging;
+    int drag_offset;
+};
+
+/*
  * Check box
  */
 struct TuiCheckBox {
@@ -356,6 +385,20 @@ void tui_window_init(TuiWindow *window,
                      int width,
                      int height,
                      const char *title);
+void tui_scrollbar_init(TuiScrollBar *scrollbar,
+                        int x,
+                        int y,
+                        int length,
+                        int orientation,
+                        int command);
+void tui_scrollbar_set_range(TuiScrollBar *scrollbar,
+                             int min,
+                             int max);
+void tui_scrollbar_set_page(TuiScrollBar *scrollbar, int page);
+void tui_scrollbar_set_value(TuiScrollBar *scrollbar, int value);
+int tui_scrollbar_get_value(const TuiScrollBar *scrollbar);
+void tui_scrollbar_set_command(TuiScrollBar *scrollbar, int command);
+
 void tui_window_set_flags(TuiWindow *window, unsigned flags);
 unsigned tui_window_get_flags(const TuiWindow *window);
 void tui_window_add_flags(TuiWindow *window, unsigned flags);
@@ -427,6 +470,8 @@ void tui_combobox_set_items(TuiComboBox *combo,
 
 int tui_combobox_get_selected(TuiComboBox *combo);
 void tui_combobox_set_selected(TuiComboBox *combo, int index);
+/* Scroll bar in the popup list when the items do not fit. */
+void tui_combobox_set_scrollbar(TuiComboBox *combo, int enabled);
 void tui_combobox_set_command(TuiComboBox *combo, int command);
 
 /*
@@ -551,6 +596,10 @@ struct TuiListBox {
     int selected;
     int offset;
     int command;
+
+    /* Optional internal vertical scroll bar, a hidden child. */
+    TuiScrollBar scrollbar;
+    int scrollbar_enabled;
 };
 
 /*
@@ -588,6 +637,11 @@ int tui_listbox_get_selected(TuiListBox *list);
 void tui_listbox_set_selected(TuiListBox *list,
                               int index);
 
+/*
+ * Reserves a column for an internal scroll bar when the items do not
+ * fit. Disabled by default.
+ */
+void tui_listbox_set_scrollbar(TuiListBox *list, int enabled);
 void tui_listbox_set_command(TuiListBox *list,
                              int command);
 

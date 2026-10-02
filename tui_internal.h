@@ -26,5 +26,6 @@ void tui_control_screen_pos(TuiControl *control,
                             int *screen_x, int *screen_y);
 
 extern const TuiClass tui_window_class;
+extern const TuiClass tui_scrollbar_class;
 
 #endif

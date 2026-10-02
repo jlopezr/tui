@@ -9,10 +9,11 @@ TEST_SRC = test/test_main.c test/test_support.c \
 	test/test_listbox.c test/test_edit.c test/test_button.c \
 	test/test_window.c test/test_menu.c test/test_statusbar.c \
 	test/test_label.c test/test_core.c test/test_checkbox.c \
-	test/test_radiobutton.c test/test_combobox.c
+	test/test_radiobutton.c test/test_combobox.c \
+	test/test_scrollbar.c
 TUI_SRC = tui.c tui_window.c tui_button.c tui_label.c \
 	tui_edit.c tui_listbox.c tui_menu.c tui_statusbar.c \
-	tui_checkbox.c tui_radiobutton.c tui_combobox.c
+	tui_checkbox.c tui_radiobutton.c tui_combobox.c tui_scrollbar.c
 DEMO_SRC = demo.c console_ncurses.c
 COVERAGE_DIR = coverage
 COVERAGE_TARGET = $(COVERAGE_DIR)/test_controls

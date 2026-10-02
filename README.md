@@ -7,7 +7,8 @@ Primera prueba del núcleo TUI discutido:
 - `TuiControl` como base de `Window`, `Label` y `Button`.
 - `TuiListBox` con selección por teclado/ratón, activación y type-to-select.
 - La demo muestra Label, Button, CheckBox, RadioButton, Edit, ComboBox y
-  ListBox en ventanas separadas; el StatusBar muestra el último comando o
+  ListBox en ventanas separadas, más un ScrollBar vertical y otro horizontal
+  en el panel derecho; el StatusBar muestra el último comando o
   el control con el que se interactuó.
 - El menú `Demo` permite alternar durante la ejecución entre esa demo de
   controles y un mini IDE que muestra Project, Editor, Inspector y Output
@@ -17,6 +18,12 @@ Primera prueba del núcleo TUI discutido:
   inicialización de sus controles.
 - El ComboBox abre y navega sus opciones con las flechas; su valor y el fondo
   del desplegable heredan el atributo de color de su padre.
+- `TuiScrollBar` (vertical/horizontal): `min`/`max` es el rango lógico total,
+  `page` lo visible y `value` la primera posición visible; el máximo efectivo
+  es `max - page` (o `min`). Los setters normalizan y nunca emiten comandos;
+  solo la interacción del usuario que cambia el valor emite `TUI_EV_COMMAND`.
+  Flechas ±1, pista ±`page`, arrastre del thumb con captura, teclas
+  flechas/RePág/AvPág/Inicio/Fin.
 - Vtable (`TuiClass`) compartida por tipo.
 - Árbol intrusivo de controles.
 - Coordenadas de hijos relativas al área cliente de la ventana.
@@ -58,7 +65,7 @@ make test
 ```
 
 La suite organiza las pruebas por control (`test_listbox.c`, `test_edit.c`,
-`test_button.c`, `test_checkbox.c`, `test_radiobutton.c`, `test_combobox.c`,
+`test_button.c`, `test_checkbox.c`, `test_radiobutton.c`, `test_combobox.c`, `test_scrollbar.c`,
 `test_window.c`, `test_menu.c`, `test_statusbar.c` y `test_label.c`) y
 `test_core.c` cubre árbol, layout, hit-testing y foco. `test_support.c`
 comparte la consola simulada y los helpers; no requiere ncurses ni una

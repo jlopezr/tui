@@ -259,6 +259,30 @@ void tui_console_cell(int x, int y, int ch, int attr)
         c = ACS_BTEE;
         break;
 
+    case TUI_CH_UP_TRIANGLE:
+        c = ACS_UARROW;
+        break;
+
+    case TUI_CH_DOWN_TRIANGLE:
+        c = ACS_DARROW;
+        break;
+
+    case TUI_CH_LEFT_TRIANGLE:
+        c = ACS_LARROW;
+        break;
+
+    case TUI_CH_RIGHT_TRIANGLE:
+        c = ACS_RARROW;
+        break;
+
+    case TUI_CH_SCROLL_TRACK:
+        c = ACS_CKBOARD;
+        break;
+
+    case TUI_CH_SCROLL_THUMB:
+        c = ACS_BLOCK;
+        break;
+
     case TUI_CH_CROSS:
         c = ACS_PLUS;
         break;

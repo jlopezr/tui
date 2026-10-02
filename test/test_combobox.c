@@ -240,6 +240,110 @@ static void test_popup_placement_above_and_setters(void)
     tui_combobox_set_command(&combo, 0);
 }
 
+static const char *many_items[] = {
+    "A1", "B2", "C3", "D4", "E5", "F6", "G7", "H8", "I9", "J10",
+    "K11", "L12"
+};
+
+static void test_popup_scrollbar(void)
+{
+    TuiDesktop desktop;
+    TuiComboBox combo;
+    TuiEvent event;
+    int sx;
+
+    test_init_desktop(&desktop);
+    tui_combobox_init(&combo, 5, 3, 16, many_items, 12);
+    tui_combobox_set_command(&combo, 81);
+    tui_combobox_set_scrollbar(&combo, 1);
+    tui_combobox_set_scrollbar(0, 1);
+    tui_add(&desktop.control, &combo.control);
+    tui_desktop_set_focus(&desktop, &combo.control);
+
+    CHECK(test_key_event(&desktop, ' ', &event));
+    CHECK(combo.open);
+    tui_draw(&desktop);
+
+    /* 8 rows for 12 items: scroll bar in the last popup column. */
+    CHECK(combo.popup_list.scrollbar.control.flags & TUI_VISIBLE);
+    CHECK(combo.popup_list.scrollbar.page == 8);
+    sx = combo.popup_window.control.x + 1 + 13;
+    CHECK(test_cell_chars[5][sx] == TUI_CH_UP_TRIANGLE);
+    CHECK(test_cell_chars[12][sx] == TUI_CH_DOWN_TRIANGLE);
+
+    /* Arrow click scrolls without closing, selecting or commanding. */
+    CHECK(test_mouse_action(&desktop, sx, 12, TUI_MOUSE_DOWN, &event));
+    CHECK(combo.open);
+    CHECK(event.type == TUI_EV_MOUSE);
+    CHECK(combo.popup_list.offset == 1);
+    CHECK(tui_listbox_get_selected(&combo.popup_list) == 0);
+    CHECK(desktop.capture == &combo.control);
+
+    /* Thumb drag keeps the popup open, even outside of it. */
+    CHECK(test_mouse_action(&desktop, sx, 6, TUI_MOUSE_DOWN, &event));
+    CHECK(combo.popup_list.scrollbar.dragging);
+    CHECK(desktop.capture == &combo.control);
+    CHECK(test_mouse_action(&desktop, 60, 22, TUI_MOUSE_MOVE, &event));
+    CHECK(combo.open);
+    CHECK(combo.popup_list.offset == 4);
+    CHECK(test_mouse_action(&desktop, 60, 22, TUI_MOUSE_UP, &event));
+    CHECK(!combo.popup_list.scrollbar.dragging);
+    CHECK(combo.open);
+    CHECK(desktop.capture == &combo.control);
+
+    /* Items are still selectable and commit. */
+    CHECK(test_mouse_action(&desktop, 8, 6, TUI_MOUSE_DOWN, &event));
+    CHECK(!combo.open);
+    CHECK(event.type == TUI_EV_COMMAND && event.command == 81);
+    CHECK(tui_combobox_get_selected(&combo) == 5);
+}
+
+static void test_popup_scrollbar_hidden_and_default(void)
+{
+    static const char *few[] = { "a", "b", "c" };
+    TuiDesktop desktop;
+    TuiComboBox combo;
+    TuiEvent event;
+
+    test_init_desktop(&desktop);
+    tui_combobox_init(&combo, 5, 3, 16, few, 3);
+    tui_combobox_set_scrollbar(&combo, 1);
+    tui_add(&desktop.control, &combo.control);
+    tui_desktop_set_focus(&desktop, &combo.control);
+    CHECK(test_key_event(&desktop, ' ', &event));
+    tui_draw(&desktop);
+    CHECK(!(combo.popup_list.scrollbar.control.flags & TUI_VISIBLE));
+    CHECK(test_key_event(&desktop, TUI_KEY_ESCAPE, &event));
+
+    /* Default: no scroll bar even with many items. */
+    tui_combobox_init(&combo, 5, 3, 16, many_items, 12);
+    CHECK(!combo.popup_list.scrollbar_enabled);
+}
+
+static void test_popup_scrollbar_escape_during_drag(void)
+{
+    TuiDesktop desktop;
+    TuiComboBox combo;
+    TuiEvent event;
+    int sx;
+
+    test_init_desktop(&desktop);
+    tui_combobox_init(&combo, 5, 3, 16, many_items, 12);
+    tui_combobox_set_scrollbar(&combo, 1);
+    tui_add(&desktop.control, &combo.control);
+    tui_desktop_set_focus(&desktop, &combo.control);
+    CHECK(test_key_event(&desktop, ' ', &event));
+    tui_draw(&desktop);
+    sx = combo.popup_window.control.x + 1 + 13;
+
+    CHECK(test_mouse_action(&desktop, sx, 5 + 1, TUI_MOUSE_DOWN, &event));
+    CHECK(combo.popup_list.scrollbar.dragging);
+    CHECK(test_key_event(&desktop, TUI_KEY_ESCAPE, &event));
+    CHECK(!combo.open);
+    CHECK(!combo.popup_list.scrollbar.dragging);
+    CHECK(desktop.capture == 0);
+}
+
 void test_combobox_suite(void)
 {
     test_run_case("combobox empty and single item", test_empty_and_single_item);
@@ -253,4 +357,9 @@ void test_combobox_suite(void)
                   test_arrow_navigation_and_parent_attributes);
     test_run_case("combobox popup placement and setters",
                   test_popup_placement_above_and_setters);
+    test_run_case("combobox popup scrollbar", test_popup_scrollbar);
+    test_run_case("combobox popup scrollbar hidden and default",
+                  test_popup_scrollbar_hidden_and_default);
+    test_run_case("combobox popup scrollbar escape during drag",
+                  test_popup_scrollbar_escape_during_drag);
 }

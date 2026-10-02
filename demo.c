@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "tui.h"
 
 #define CMD_QUIT          101
@@ -16,6 +18,8 @@
 #define CMD_OPTIMIZATION  114
 #define CMD_DEMO_CONTROLS 115
 #define CMD_DEMO_LAYOUT   116
+#define CMD_SCROLL_V      117
+#define CMD_SCROLL_H      118
 
 #define DEMO_NONE         0
 #define DEMO_CONTROLS     1
@@ -32,6 +36,19 @@ static const char *demo_items[] = {
     "Cherry",
     "Lemon",
     "Mango"
+};
+
+static const char *scroll_items[] = {
+    "Item 01", "Item 02", "Item 03", "Item 04", "Item 05",
+    "Item 06", "Item 07", "Item 08", "Item 09", "Item 10",
+    "Item 11", "Item 12", "Item 13", "Item 14", "Item 15",
+    "Item 16", "Item 17", "Item 18", "Item 19", "Item 20"
+};
+
+static const char *short_items[] = {
+    "One",
+    "Two",
+    "Three"
 };
 
 static const char *optimization_items[] = {
@@ -72,9 +89,18 @@ typedef struct App {
     TuiRadioButton forth_radio;
     TuiRadioButton c_radio;
     TuiComboBox optimization_combo;
+    TuiComboBox scroll_combo;
     char edit_buffer[64];
     TuiEdit edit;
     TuiListBox listbox;
+    TuiListBox scroll_list;
+    TuiListBox short_list;
+    TuiScrollBar vscroll;
+    TuiScrollBar hscroll;
+    TuiLabel vscroll_label;
+    TuiLabel hscroll_label;
+    char vscroll_text[24];
+    char hscroll_text[24];
 
     TuiWindow layout_view;
     TuiWindow project_window;
@@ -118,6 +144,8 @@ static CommandEntry command_table[] = {
     { CMD_LANG_FORTH,    "Command: Language -> Forth" },
     { CMD_LANG_C,        "Command: Language -> C" },
     { CMD_OPTIMIZATION,  "Command: Optimization changed" },
+    { CMD_SCROLL_V,      "Command: Vertical scroll bar" },
+    { CMD_SCROLL_H,      "Command: Horizontal scroll bar" },
     { CMD_DEMO_CONTROLS, "Demo: Controls" },
     { CMD_DEMO_LAYOUT,   "Demo: Layout / Mini IDE" },
     { CMD_QUIT,          "Command: File -> Exit" }
@@ -125,6 +153,16 @@ static CommandEntry command_table[] = {
 
 #define COMMAND_COUNT \
     ((int)(sizeof(command_table) / sizeof(command_table[0])))
+
+static void demo_update_scroll_labels(App *app)
+{
+    sprintf(app->vscroll_text, "Vertical: %d",
+            tui_scrollbar_get_value(&app->vscroll));
+    sprintf(app->hscroll_text, "Horizontal: %d",
+            tui_scrollbar_get_value(&app->hscroll));
+    tui_label_set_text(&app->vscroll_label, app->vscroll_text);
+    tui_label_set_text(&app->hscroll_label, app->hscroll_text);
+}
 
 static int dispatch_command(App *app, int command)
 {
@@ -137,6 +175,9 @@ static int dispatch_command(App *app, int command)
 
             if (command == CMD_QUIT)
                 app->running = 0;
+            else if (command == CMD_SCROLL_V ||
+                     command == CMD_SCROLL_H)
+                demo_update_scroll_labels(app);
             else if (command == CMD_DEMO_CONTROLS)
                 demo_show_controls(app);
             else if (command == CMD_DEMO_LAYOUT)
@@ -175,15 +216,22 @@ static void note_control_event(App *app, TuiEvent *event)
              control == &app->c_radio.control)
         tui_statusbar_set_text(&app->status_bar,
                                "Control: RadioButton");
-    else if (control == &app->optimization_combo.control)
+    else if (control == &app->optimization_combo.control ||
+             control == &app->scroll_combo.control)
         tui_statusbar_set_text(&app->status_bar,
                                "Control: ComboBox");
-    else if (control == &app->listbox.control)
+    else if (control == &app->listbox.control ||
+             control == &app->scroll_list.control ||
+             control == &app->short_list.control)
         tui_statusbar_set_text(&app->status_bar,
                                "Control: ListBox");
     else if (control == &app->button.control)
         tui_statusbar_set_text(&app->status_bar,
                                "Control: Button");
+    else if (control == &app->vscroll.control ||
+             control == &app->hscroll.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: ScrollBar");
     else if (control == &app->label.control)
         tui_statusbar_set_text(&app->status_bar,
                                "Control: Label");
@@ -261,9 +309,32 @@ static void demo_build_controls(App *app)
     tui_combobox_set_command(&app->optimization_combo,
                              CMD_OPTIMIZATION);
 
+    tui_combobox_init(&app->scroll_combo, 1, 5, 21,
+                      scroll_items, 20);
+    tui_combobox_set_scrollbar(&app->scroll_combo, 1);
+
     tui_listbox_init(&app->listbox, 1, 1, 21, 5,
                      demo_items, 10);
     tui_listbox_set_command(&app->listbox, CMD_LIST_OPEN);
+
+    tui_listbox_init(&app->scroll_list, 0, 0, 10, 6,
+                     scroll_items, 20);
+    tui_listbox_set_scrollbar(&app->scroll_list, 1);
+    tui_listbox_init(&app->short_list, 0, 7, 10, 3,
+                     short_items, 3);
+    tui_listbox_set_scrollbar(&app->short_list, 1);
+
+    tui_scrollbar_init(&app->vscroll, 1, 1, 12,
+                       TUI_VERTICAL, CMD_SCROLL_V);
+    tui_scrollbar_set_range(&app->vscroll, 0, 100);
+    tui_scrollbar_set_page(&app->vscroll, 20);
+    tui_scrollbar_init(&app->hscroll, 1, 14, 12,
+                       TUI_HORIZONTAL, CMD_SCROLL_H);
+    tui_scrollbar_set_range(&app->hscroll, 0, 50);
+    tui_scrollbar_set_page(&app->hscroll, 10);
+    tui_label_init(&app->vscroll_label, 3, 1, "");
+    tui_label_init(&app->hscroll_label, 1, 16, "");
+    demo_update_scroll_labels(app);
 
 
     tui_add(&app->workspace.control, &app->label_window.control);
@@ -280,7 +351,16 @@ static void demo_build_controls(App *app)
     tui_add(&app->edit_window.control, &app->edit.control);
     tui_add(&app->edit_window.control,
             &app->optimization_combo.control);
+    tui_add(&app->edit_window.control, &app->scroll_combo.control);
     tui_add(&app->list_window.control, &app->listbox.control);
+
+    tui_add(&app->left.control, &app->scroll_list.control);
+    tui_add(&app->left.control, &app->short_list.control);
+
+    tui_add(&app->right.control, &app->vscroll.control);
+    tui_add(&app->right.control, &app->vscroll_label.control);
+    tui_add(&app->right.control, &app->hscroll.control);
+    tui_add(&app->right.control, &app->hscroll_label.control);
 }
 
 static void demo_build_layout(App *app)
@@ -384,7 +464,8 @@ static void demo_hide_active(App *app)
     TuiEvent event;
 
     if (app->active_demo == DEMO_CONTROLS &&
-        app->optimization_combo.open) {
+        (app->optimization_combo.open ||
+         app->scroll_combo.open)) {
         event.type = TUI_EV_KEY;
         event.key = TUI_KEY_ESCAPE;
         event.command = TUI_CMD_NONE;

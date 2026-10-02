@@ -75,6 +75,14 @@
 #define TUI_CH_DTR     0x10E
 #define TUI_CH_DBL     0x10F
 #define TUI_CH_DBR     0x110
+
+/* Scroll bar parts. */
+#define TUI_CH_UP_TRIANGLE     0x111
+#define TUI_CH_DOWN_TRIANGLE   0x112
+#define TUI_CH_LEFT_TRIANGLE   0x113
+#define TUI_CH_RIGHT_TRIANGLE  0x114
+#define TUI_CH_SCROLL_TRACK    0x115
+#define TUI_CH_SCROLL_THUMB    0x116
 int  tui_console_init(void);
 void tui_console_shutdown(void);
 
