@@ -2,23 +2,14 @@ CC      = cc
 CFLAGS  = -std=c89 -Wall -Wextra -pedantic
 LDLIBS  = -lncurses
 
-OBJS = tui.o console_ncurses.o demo.o
+TARGET  = demo
 
-all: demo
+all: $(TARGET)
 
-demo: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDLIBS)
-
-tui.o: tui.c tui.h console.h
-	$(CC) $(CFLAGS) -c tui.c
-
-console_ncurses.o: console_ncurses.c console.h
-	$(CC) $(CFLAGS) -c console_ncurses.c
-
-demo.o: demo.c tui.h console.h
-	$(CC) $(CFLAGS) -c demo.c
+$(TARGET): main.c tui.c tui.h console.h console_ncurses.c demo.c
+	$(CC) $(CFLAGS) -DTUI_BACKEND_NCURSES main.c -o $(TARGET) $(LDLIBS)
 
 clean:
-	rm -f $(OBJS) demo
+	rm -f $(TARGET)
 
 .PHONY: all clean

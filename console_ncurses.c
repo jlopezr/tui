@@ -128,6 +128,20 @@ int tui_console_key(void)
     case KEY_RIGHT:
         return TUI_KEY_RIGHT;
 
+    case KEY_F(1):  return TUI_KEY_F1;
+    case KEY_F(2):  return TUI_KEY_F2;
+    case KEY_F(3):  return TUI_KEY_F3;
+    case KEY_F(4):  return TUI_KEY_F4;
+    case KEY_F(5):  return TUI_KEY_F5;
+    case KEY_F(6):  return TUI_KEY_F6;
+    case KEY_F(7):  return TUI_KEY_F7;
+    case KEY_F(8):  return TUI_KEY_F8;
+    case KEY_F(9):  return TUI_KEY_F9;
+    case KEY_F(10): return TUI_KEY_F10;
+    case KEY_F(11): return TUI_KEY_F11;
+    case KEY_F(12): return TUI_KEY_F12;
+
+
     default:
         return ch;
     }
