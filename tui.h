@@ -17,6 +17,9 @@ typedef struct TuiLabel TuiLabel;
 typedef struct TuiButton TuiButton;
 typedef struct TuiEdit TuiEdit;
 typedef struct TuiTextArea TuiTextArea;
+typedef struct TuiTextModel TuiTextModel;
+typedef struct TuiLinearTextModel TuiLinearTextModel;
+typedef struct TuiEditor TuiEditor;
 typedef struct TuiListBox TuiListBox;
 typedef struct TuiCheckBox TuiCheckBox;
 typedef struct TuiRadioButton TuiRadioButton;
@@ -511,6 +514,107 @@ const char *tui_textarea_get_text(const TuiTextArea *area);
 void tui_textarea_set_readonly(TuiTextArea *area, int readonly);
 
 /*
+ * Text model: character storage addressed by offsets. Lines are an
+ * interpretation made by the user of the model ('\n' separators).
+ *
+ * length: number of characters stored.
+ * read:   copies up to 'length' characters from 'pos'; returns how
+ *         many were copied (0 for an invalid position).
+ * insert: inserts 'length' characters at 'pos' (0..length); all or
+ *         nothing, returns the number inserted.
+ * delete: removes up to 'length' characters at 'pos'; returns how
+ *         many were removed.
+ */
+typedef struct TuiTextModelClass {
+    int (*length)(const TuiTextModel *model);
+
+    int (*read)(const TuiTextModel *model,
+                int pos,
+                char *dest,
+                int length);
+
+    int (*insert)(TuiTextModel *model,
+                  int pos,
+                  const char *text,
+                  int length);
+
+    int (*delete)(TuiTextModel *model,
+                  int pos,
+                  int length);
+} TuiTextModelClass;
+
+struct TuiTextModel {
+    const TuiTextModelClass *cls;
+};
+
+int tui_text_model_length(const TuiTextModel *model);
+
+int tui_text_model_read(const TuiTextModel *model,
+                        int pos,
+                        char *dest,
+                        int length);
+
+int tui_text_model_insert(TuiTextModel *model,
+                          int pos,
+                          const char *text,
+                          int length);
+
+int tui_text_model_delete(TuiTextModel *model,
+                          int pos,
+                          int length);
+
+/*
+ * Linear model over an application buffer. The buffer always stays a
+ * valid C string, so at most capacity - 1 characters are stored.
+ */
+struct TuiLinearTextModel {
+    TuiTextModel model;
+
+    char *buffer;
+    int capacity;
+    int length;
+};
+
+void tui_linear_text_model_init(TuiLinearTextModel *model,
+                                char *buffer,
+                                int capacity);
+
+/* Replaces the whole content, truncating to the capacity. */
+void tui_linear_text_model_set_text(TuiLinearTextModel *model,
+                                    const char *text);
+
+/*
+ * Editor: multiline editor over any TuiTextModel. It does not own
+ * the storage. If a command is set, a TUI_EV_COMMAND (source = the
+ * editor) is produced when a user action changes the cursor or the
+ * text; the application then queries the editor state.
+ */
+typedef struct TuiEditorPosition {
+    int line;
+    int column;
+    int offset;
+} TuiEditorPosition;
+
+void tui_editor_init(TuiEditor *editor,
+                     int x,
+                     int y,
+                     int width,
+                     int height,
+                     TuiTextModel *model);
+
+void tui_editor_set_command(TuiEditor *editor, int command);
+
+/* Line and column are 0-based. */
+void tui_editor_get_position(const TuiEditor *editor,
+                             TuiEditorPosition *position);
+
+int tui_editor_is_modified(const TuiEditor *editor);
+
+void tui_editor_set_modified(TuiEditor *editor, int modified);
+
+void tui_editor_set_readonly(TuiEditor *editor, int readonly);
+
+/*
  * ------------------------------------------------------------
  * Menus
  * ------------------------------------------------------------
@@ -629,6 +733,29 @@ struct TuiTextArea {
 /*
  * List box
  */
+struct TuiEditor {
+    TuiControl control;
+
+    TuiTextModel *model;
+
+    /* Offset of the cursor inside the model; line/column are derived. */
+    int cursor_pos;
+    int top_line;
+    int left_col;
+
+    int command;
+    int modified;
+    int readonly;
+
+    /* Size seen by the last sync, to detect resizes. */
+    int last_width;
+    int last_height;
+
+    /* Internal scroll bars, hidden children shown on demand. */
+    TuiScrollBar vscroll;
+    TuiScrollBar hscroll;
+};
+
 struct TuiListBox {
     TuiControl control;
 

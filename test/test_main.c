@@ -20,6 +20,8 @@ int main(void)
     test_combobox_suite();
     test_scrollbar_suite();
     test_textarea_suite();
+    test_textmodel_suite();
+    test_editor_suite();
 
     printf("%d checks, %d failures\n",
            test_checks,
