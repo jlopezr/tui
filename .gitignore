@@ -1,5 +1,7 @@
 demo
 /demo-unity
 *.o
+*.obj
+*.exe
 test/test_controls
 /coverage/

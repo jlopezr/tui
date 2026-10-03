@@ -4,6 +4,8 @@ LDLIBS  = -lncurses
 
 TARGET  = demo
 UNITY_TARGET = demo-unity
+WIN32_TARGET = demo-win32.exe
+WIN32_CC ?= gcc
 TEST_TARGET = test/test_controls
 TEST_SRC = test/test_main.c test/test_support.c \
 	test/test_listbox.c test/test_edit.c test/test_button.c \
@@ -33,6 +35,13 @@ $(UNITY_TARGET): tui_unity.c $(DEMO_SRC) $(TUI_SRC) tui.h tui_internal.h console
 
 unity: $(UNITY_TARGET)
 
+$(WIN32_TARGET): demo.c console_win32.c \
+	$(TUI_SRC) tui.h tui_internal.h console.h
+	$(WIN32_CC) $(CFLAGS) -DTUI_BACKEND_WIN32 \
+		demo.c console_win32.c $(TUI_SRC) -o $(WIN32_TARGET)
+
+win32: $(WIN32_TARGET)
+
 $(TEST_TARGET): $(TEST_SRC) $(TUI_SRC) tui.h tui_internal.h console.h \
 	test/test_support.h
 	$(CC) $(CFLAGS) -I. $(TEST_SRC) $(TUI_SRC) -o $(TEST_TARGET)
@@ -52,8 +61,8 @@ coverage: $(COVERAGE_TARGET)
 	$(LLVM_COV) report ./$(COVERAGE_TARGET) -instr-profile=$(COVERAGE_DIR)/test_controls.profdata --ignore-filename-regex='(^|/)test/.*|(^|/)(tui\.h|console\.h)$$'
 
 clean:
-	rm -f $(TARGET) $(UNITY_TARGET) $(TEST_TARGET) $(COVERAGE_TARGET) \
+	rm -f $(TARGET) $(UNITY_TARGET) $(WIN32_TARGET) $(TEST_TARGET) $(COVERAGE_TARGET) \
 		$(COVERAGE_DIR)/test_controls.profraw \
 		$(COVERAGE_DIR)/test_controls.profdata
 
-.PHONY: all clean test coverage unity
+.PHONY: all clean test coverage unity win32

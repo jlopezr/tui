@@ -42,6 +42,7 @@ Primera prueba del núcleo TUI discutido:
 - Clipping en la primitiva de escritura.
 - Backend de consola separado.
 - Backend macOS/Unix mediante ncurses.
+- Backend Windows mediante la API de consola Win32, sin ncurses.
 - Tab cambia el foco.
 - Enter activa el botón enfocado.
 - Esc sale.
@@ -69,6 +70,53 @@ seleccionar/proporcionar el backend compatible con ese target.
 
 Si el enlazador no encuentra ncurses, instala ncurses con tu gestor habitual
 o ajusta `LDLIBS`/rutas en el Makefile.
+
+## Compilar en Windows
+
+El backend `console_win32.c` usa únicamente la API de consola de Windows y no
+requiere ncurses ni otra biblioteca externa. Con MinGW-w64:
+
+```sh
+make win32
+./demo-win32.exe
+```
+
+También se puede seleccionar otro compilador con `WIN32_CC`, por ejemplo:
+
+```sh
+make win32 WIN32_CC=x86_64-w64-mingw32-gcc
+```
+
+Con Visual Studio, importa las variables de MSVC en la terminal actual
+ejecutando el script con dot-sourcing:
+
+```powershell
+. .\import-vsdev-env.ps1
+cl
+```
+
+El primer punto es necesario: si se ejecuta como `.\import-vsdev-env.ps1`,
+las variables sólo existirán en el proceso hijo y no quedarán disponibles en
+la terminal. Se puede elegir otra arquitectura:
+
+```powershell
+. .\import-vsdev-env.ps1 -Architecture x86 -HostArchitecture x64
+```
+
+Después, compila con NMAKE usando el makefile específico de MSVC:
+
+```powershell
+nmake /f Makefile.msvc
+```
+
+Para limpiar los artefactos:
+
+```powershell
+nmake /f Makefile.msvc clean
+```
+
+El backend conserva el contrato de `console.h`: teclado, ratón, doble clic,
+colores DOS, cursor, tamaño de consola y caracteres gráficos.
 
 ## Tests
 
@@ -111,10 +159,12 @@ perfiles quedan en `coverage/`, que se puede limpiar con `make clean`.
 - `tui_statusbar.c`: StatusBar.
 - `console.h`: contrato del backend.
 - `console_ncurses.c`: backend de PC/macOS.
+- `console_win32.c`: backend de Windows sin dependencias externas.
 - `demo.c`: punto de entrada y aplicación de ejemplo.
 - `test/test_*.c`: pruebas unitarias separadas por control y core.
 - `test/test_support.c`, `test/test_support.h`: consola simulada y helpers.
 - `Makefile`: build.
+- `Makefile.msvc`: build de Windows con MSVC/NMAKE.
 
 El siguiente backend puede ser `console_mmio.c`, implementando exactamente
 las mismas funciones de `console.h`.
