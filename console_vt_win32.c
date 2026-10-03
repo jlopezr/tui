@@ -1,6 +1,7 @@
 #include <windows.h>
 
 #include "console.h"
+#include "console_dirty.h"
 
 #define TUI_MOUSE_DOUBLE_CLICK_MS 500
 #define TUI_VT_ESC "\033["
@@ -403,18 +404,69 @@ void tui_console_cursor(int x, int y, int visible)
     tui_cursor_visible = visible;
 }
 
+typedef struct TuiVtDirtyContext {
+    char **cursor;
+    char *end;
+    int previous_attr;
+} TuiVtDirtyContext;
+
+static int tui_vt_write_run(int x, int y, int length,
+                            const CHAR_INFO *cells,
+                            void *context)
+{
+    TuiVtDirtyContext *ctx;
+    int i;
+    int attr;
+    int foreground;
+    int background;
+
+    ctx = (TuiVtDirtyContext *)context;
+    if (!tui_vt_append(ctx->cursor, ctx->end, TUI_VT_ESC) ||
+        !tui_vt_append_number(ctx->cursor, ctx->end, y + 1) ||
+        !tui_vt_append(ctx->cursor, ctx->end, ";") ||
+        !tui_vt_append_number(ctx->cursor, ctx->end, x + 1) ||
+        !tui_vt_append(ctx->cursor, ctx->end, "H"))
+        return 0;
+
+    for (i = 0; i < length; ++i) {
+        attr = cells[i].Attributes;
+        if (attr != ctx->previous_attr) {
+            foreground = (attr & 8) ? 90 : 30;
+            foreground += attr & 0x07;
+            background = (attr & 0x80) ? 100 : 40;
+            background += (attr >> 4) & 0x07;
+            if (!tui_vt_append(ctx->cursor, ctx->end, "\033[") ||
+                !tui_vt_append_number(ctx->cursor, ctx->end, foreground) ||
+                !tui_vt_append(ctx->cursor, ctx->end, ";") ||
+                !tui_vt_append_number(ctx->cursor, ctx->end, background) ||
+                !tui_vt_append(ctx->cursor, ctx->end, "m"))
+                return 0;
+            ctx->previous_attr = attr;
+        }
+        if (!tui_vt_append_utf8(ctx->cursor, ctx->end,
+                                cells[i].Char.UnicodeChar))
+            return 0;
+    }
+    return 1;
+}
+
 void tui_console_present(void)
 {
     char *cursor;
     char *end;
+    int previous_attr;
+#ifndef TUI_PROFILE_FULL
+    TuiVtDirtyContext dirty_context;
+#endif
+#ifdef TUI_PROFILE_FULL
     int x;
     int y;
     int attr;
     int foreground;
     int background;
-    int previous_attr;
     int start;
     int run_end;
+#endif
     DWORD written;
 
     if (tui_frame == 0 || tui_previous_frame == 0 ||
@@ -451,56 +503,18 @@ void tui_console_present(void)
                     return;
             }
         }
-#else
-        for (y = 0; y < tui_height; ++y) {
-            x = 0;
-            while (x < tui_width) {
-                while (x < tui_width &&
-                       tui_frame[y * tui_width + x].Char.UnicodeChar ==
-                       tui_previous_frame[y * tui_width + x].Char.UnicodeChar &&
-                       tui_frame[y * tui_width + x].Attributes ==
-                       tui_previous_frame[y * tui_width + x].Attributes)
-                    ++x;
-                start = x;
-                while (x < tui_width &&
-                       (tui_frame[y * tui_width + x].Char.UnicodeChar !=
-                        tui_previous_frame[y * tui_width + x].Char.UnicodeChar ||
-                        tui_frame[y * tui_width + x].Attributes !=
-                        tui_previous_frame[y * tui_width + x].Attributes))
-                    ++x;
-                run_end = x;
-                if (start == run_end)
-                    continue;
-                tui_vt_append(&cursor, end, TUI_VT_ESC);
-                tui_vt_append_number(&cursor, end, y + 1);
-                tui_vt_append(&cursor, end, ";");
-                tui_vt_append_number(&cursor, end, start + 1);
-                tui_vt_append(&cursor, end, "H");
-                for (x = start; x < run_end; ++x) {
-                    attr = tui_frame[y * tui_width + x].Attributes;
-            if (attr != previous_attr) {
-                foreground = (attr & 8) ? 90 : 30;
-                foreground += attr & 0x07;
-                background = (attr & 0x80) ? 100 : 40;
-                background += (attr >> 4) & 0x07;
-                tui_vt_append(&cursor, end, "\033[");
-                tui_vt_append_number(&cursor, end, foreground);
-                tui_vt_append(&cursor, end, ";");
-                tui_vt_append_number(&cursor, end, background);
-                tui_vt_append(&cursor, end, "m");
-                previous_attr = attr;
-            }
-                    if (!tui_vt_append_utf8(
-                            &cursor, end,
-                            tui_frame[y * tui_width + x].Char.UnicodeChar))
-                        return;
-                }
-            }
-        }
-#endif
         CopyMemory(tui_previous_frame, tui_frame,
                    (SIZE_T)tui_width * (SIZE_T)tui_height *
                    sizeof(CHAR_INFO));
+#else
+        dirty_context.cursor = &cursor;
+        dirty_context.end = end;
+        dirty_context.previous_attr = previous_attr;
+        if (!tui_dirty_each_run(tui_frame, tui_previous_frame,
+                                tui_width, tui_height, tui_frame_dirty,
+                                tui_vt_write_run, &dirty_context))
+            return;
+#endif
         tui_frame_dirty = 0;
     }
     tui_vt_append(&cursor, end, TUI_VT_ESC);

@@ -21,20 +21,24 @@ TUI_SRC = tui.c tui_window.c tui_button.c tui_label.c \
 
 all: $(TARGET)
 
-$(TARGET): demo.c console_win32.c $(TUI_SRC) tui.h tui_internal.h console.h
-	$(CC) $(CFLAGS) /Fe$@ demo.c console_win32.c $(TUI_SRC)
+$(TARGET): demo.c console_win32.c console_dirty.c $(TUI_SRC) \
+	tui.h tui_internal.h console.h console_dirty.h
+	$(CC) $(CFLAGS) /Fe$@ demo.c console_win32.c console_dirty.c $(TUI_SRC)
 
-$(VT_TARGET): demo.c console_vt_win32.c $(TUI_SRC) tui.h tui_internal.h console.h
-	$(CC) $(CFLAGS) /Fe$@ demo.c console_vt_win32.c $(TUI_SRC)
+$(VT_TARGET): demo.c console_vt_win32.c console_dirty.c \
+	$(TUI_SRC) tui.h tui_internal.h console.h console_dirty.h
+	$(CC) $(CFLAGS) /Fe$@ demo.c console_vt_win32.c console_dirty.c $(TUI_SRC)
 
 vt: $(VT_TARGET)
 
-$(PROFILE_TARGET): profile_render.c console_vt_win32.c console.h
-	$(CC) $(CFLAGS) /Fe$@ profile_render.c console_vt_win32.c
+$(PROFILE_TARGET): profile_render.c console_vt_win32.c console_dirty.c console.h \
+	console_dirty.h
+	$(CC) $(CFLAGS) /Fe$@ profile_render.c console_vt_win32.c console_dirty.c
 
-$(PROFILE_FULL_TARGET): profile_render.c console_vt_win32.c console.h
+$(PROFILE_FULL_TARGET): profile_render.c console_vt_win32.c console_dirty.c \
+	console.h console_dirty.h
 	$(CC) $(CFLAGS) /DTUI_PROFILE_FULL /Fe$@ \
-		profile_render.c console_vt_win32.c
+		profile_render.c console_vt_win32.c console_dirty.c
 
 profile: $(PROFILE_TARGET) $(PROFILE_FULL_TARGET)
 	$(PROFILE_TARGET)

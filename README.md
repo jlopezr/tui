@@ -66,7 +66,12 @@ make unity
 
 `tui_unity.c` agrega los mismos módulos y selecciona el backend igual que el
 build normal. El target actual de unity usa ncurses; para LCC se necesita
-seleccionar/proporcionar el backend compatible con ese target.
+seleccionar/proporcionar el backend compatible con ese target. El backend
+MMIO se valida directamente con `mini-lcc`:
+
+```powershell
+..\tools\mini-lcc.ps1 .\console_mini.c -o .\_build\console_mini.s
+```
 
 Si el enlazador no encuentra ncurses, instala ncurses con tu gestor habitual
 o ajusta `LDLIBS`/rutas en el Makefile.
@@ -190,11 +195,23 @@ perfiles quedan en `coverage/`, que se puede limpiar con `make clean`.
 - `console.h`: contrato del backend.
 - `console_ncurses.c`: backend de PC/macOS.
 - `console_win32.c`: backend de Windows sin dependencias externas.
+- `console_vt_win32.c`: backend VT de Windows para ConPTY.
+- `console_mini.c`: backend MMIO 80x30 para la consola de la máquina MiniCPU.
 - `demo.c`: punto de entrada y aplicación de ejemplo.
 - `test/test_*.c`: pruebas unitarias separadas por control y core.
 - `test/test_support.c`, `test/test_support.h`: consola simulada y helpers.
 - `Makefile`: build.
 - `Makefile.msvc`: build de Windows con MSVC/NMAKE.
 
-El siguiente backend puede ser `console_mmio.c`, implementando exactamente
-las mismas funciones de `console.h`.
+`console_mini.c` implementa el backend MMIO 80x30 para la máquina real:
+entrada por SERIAL y salida por `VIDEO.TEXT`. El build unity puede seleccionarlo
+con `-DTUI_BACKEND_MMIO`.
+
+La demo completa también puede compilarse para MiniCPU con `mini-lcc`: en ese
+modo desactiva temporalmente los textos formateados que dependen de `stdio`
+(`sprintf`) y muestra etiquetas estáticas. Los builds de escritorio conservan
+los textos dinámicos:
+
+```powershell
+..\tools\mini-lcc.ps1 .\tui_unity_mini.c -o .\_build\tui_mini.s
+```

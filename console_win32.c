@@ -1,5 +1,6 @@
 #include <windows.h>
 #include "console.h"
+#include "console_dirty.h"
 
 #define TUI_MOUSE_DOUBLE_CLICK_MS 500
 
@@ -458,64 +459,44 @@ void tui_console_cursor(int x, int y, int visible)
         SetConsoleCursorPosition(tui_output, pos);
 }
 
-void tui_console_present(void)
-{
+typedef struct TuiWin32DirtyContext {
+    HANDLE output;
     CONSOLE_SCREEN_BUFFER_INFO info;
+} TuiWin32DirtyContext;
+
+static int tui_win32_write_run(int x, int y, int length,
+                               const CHAR_INFO *cells,
+                               void *context)
+{
     COORD source;
     COORD buffer_size;
-    COORD size;
     SMALL_RECT target;
-    int x;
-    int y;
-    int start;
-    int end;
+    TuiWin32DirtyContext *ctx;
+
+    ctx = (TuiWin32DirtyContext *)context;
+    source.X = 0;
+    source.Y = 0;
+    buffer_size.X = (SHORT)length;
+    buffer_size.Y = 1;
+    target.Left = (SHORT)(ctx->info.srWindow.Left + x);
+    target.Top = (SHORT)(ctx->info.srWindow.Top + y);
+    target.Right = (SHORT)(ctx->info.srWindow.Left + x + length - 1);
+    target.Bottom = target.Top;
+    return WriteConsoleOutputW(ctx->output, cells, buffer_size,
+                               source, &target) ? 1 : 0;
+}
+
+void tui_console_present(void)
+{
+    TuiWin32DirtyContext context;
 
     if (tui_frame == 0 || tui_previous_frame == 0 ||
-        !GetConsoleScreenBufferInfo(tui_output, &info))
+        !GetConsoleScreenBufferInfo(tui_output, &context.info))
         return;
-
-    if (!tui_win32_frame_size(
-            info.srWindow.Right - info.srWindow.Left + 1,
-            info.srWindow.Bottom - info.srWindow.Top + 1))
-        return;
-
-    if (tui_frame_dirty) {
-        for (y = 0; y < tui_frame_height; ++y) {
-            x = 0;
-            while (x < tui_frame_width) {
-                while (x < tui_frame_width &&
-                       tui_frame[y * tui_frame_width + x].Char.UnicodeChar ==
-                       tui_previous_frame[y * tui_frame_width + x].Char.UnicodeChar &&
-                       tui_frame[y * tui_frame_width + x].Attributes ==
-                       tui_previous_frame[y * tui_frame_width + x].Attributes)
-                    ++x;
-                start = x;
-                while (x < tui_frame_width &&
-                       (tui_frame[y * tui_frame_width + x].Char.UnicodeChar !=
-                        tui_previous_frame[y * tui_frame_width + x].Char.UnicodeChar ||
-                        tui_frame[y * tui_frame_width + x].Attributes !=
-                        tui_previous_frame[y * tui_frame_width + x].Attributes))
-                    ++x;
-                end = x;
-                if (start == end)
-                    continue;
-                buffer_size.X = (SHORT)tui_frame_width;
-                buffer_size.Y = (SHORT)tui_frame_height;
-                source.X = (SHORT)start;
-                source.Y = (SHORT)y;
-                size.X = (SHORT)(end - start);
-                size.Y = 1;
-                target.Left = (SHORT)(info.srWindow.Left + start);
-                target.Top = (SHORT)(info.srWindow.Top + y);
-                target.Right = (SHORT)(info.srWindow.Left + end - 1);
-                target.Bottom = target.Top;
-                WriteConsoleOutputW(tui_output, tui_frame, buffer_size,
-                                    source, &target);
-            }
-        }
-        CopyMemory(tui_previous_frame, tui_frame,
-                   (SIZE_T)tui_frame_width * (SIZE_T)tui_frame_height *
-                   sizeof(CHAR_INFO));
+    context.output = tui_output;
+    if (tui_dirty_each_run(tui_frame, tui_previous_frame,
+                           tui_frame_width, tui_frame_height,
+                           tui_frame_dirty,
+                           tui_win32_write_run, &context))
         tui_frame_dirty = 0;
-    }
 }

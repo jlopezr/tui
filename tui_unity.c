@@ -21,7 +21,7 @@
 #if defined(TUI_BACKEND_NCURSES)
     #include "console_ncurses.c"
 #elif defined(TUI_BACKEND_MMIO)
-    #include "console_mmio.c"
+    #include "console_mini.c"
 #else
     #error No TUI backend selected
 #endif

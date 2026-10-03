@@ -1,4 +1,6 @@
+#ifndef TUI_BACKEND_MMIO
 #include <stdio.h>
+#endif
 
 #include "tui.h"
 
@@ -199,17 +201,25 @@ static CommandEntry command_table[] = {
 
 static void demo_update_scroll_labels(App *app)
 {
+#ifdef TUI_BACKEND_MMIO
+    tui_label_set_text(&app->vscroll_label, "Vertical");
+    tui_label_set_text(&app->hscroll_label, "Horizontal");
+#else
     sprintf(app->vscroll_text, "Vertical: %d",
             tui_scrollbar_get_value(&app->vscroll));
     sprintf(app->hscroll_text, "Horizontal: %d",
             tui_scrollbar_get_value(&app->hscroll));
     tui_label_set_text(&app->vscroll_label, app->vscroll_text);
     tui_label_set_text(&app->hscroll_label, app->hscroll_text);
+#endif
 }
 
 /* The editor state is queried from the editor, never from its buffer. */
 static void demo_update_editor_status(App *app)
 {
+#ifdef TUI_BACKEND_MMIO
+    tui_statusbar_set_text(&app->status_bar, "Editor");
+#else
     TuiEditorPosition position;
 
     tui_editor_get_position(&app->editor, &position);
@@ -219,6 +229,7 @@ static void demo_update_editor_status(App *app)
             tui_editor_is_modified(&app->editor) ?
             "    Modified" : "");
     tui_statusbar_set_text(&app->status_bar, app->editor_status);
+#endif
 }
 
 static int dispatch_command(App *app, int command)
