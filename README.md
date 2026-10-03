@@ -109,6 +109,35 @@ Después, compila con NMAKE usando el makefile específico de MSVC:
 nmake /f Makefile.msvc
 ```
 
+Para usar el backend VT, recomendado en el terminal integrado de VS Code:
+
+```powershell
+nmake /f Makefile.msvc vt
+.\demo-vt-win32.exe
+```
+
+Para comparar automáticamente dirty rendering con un frame completo:
+
+```powershell
+nmake /f Makefile.msvc profile
+```
+
+El benchmark escribe una línea de texto durante 1000 frames y muestra el
+tiempo medio de presentación para ambas variantes.
+
+Este backend usa la API Win32 sólo para entrada y secuencias ANSI/VT para
+salida. Entra en el alternate screen buffer, evitando los problemas de
+desplazamiento de filas que pueden aparecer con ConPTY.
+
+La suite de tests, que usa la consola simulada y no necesita una terminal
+interactiva, también se puede compilar y ejecutar con MSVC:
+
+```powershell
+nmake /f Makefile.msvc test
+```
+
+El ejecutable de tests queda en `test\test_controls.exe`.
+
 Para limpiar los artefactos:
 
 ```powershell
@@ -116,7 +145,8 @@ nmake /f Makefile.msvc clean
 ```
 
 El backend conserva el contrato de `console.h`: teclado, ratón, doble clic,
-colores DOS, cursor, tamaño de consola y caracteres gráficos.
+colores DOS, cursor, tamaño de consola y caracteres gráficos. Al cerrar la
+aplicación, la ventana visible se limpia y el cursor vuelve a su origen.
 
 ## Tests
 

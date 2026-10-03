@@ -8,6 +8,13 @@ static HANDLE tui_output;
 static DWORD tui_input_mode;
 static DWORD tui_output_mode;
 static int tui_console_ready;
+static CHAR_INFO *tui_frame;
+static CHAR_INFO *tui_previous_frame;
+static int tui_frame_width;
+static int tui_frame_height;
+static int tui_frame_dirty;
+static int tui_window_width;
+static int tui_window_height;
 
 static int tui_mouse_x;
 static int tui_mouse_y;
@@ -38,6 +45,52 @@ static int tui_win32_position(int x, int y, COORD *pos)
 
     pos->X = (SHORT)(x + info.srWindow.Left);
     pos->Y = (SHORT)(y + info.srWindow.Top);
+    return 1;
+}
+
+static int tui_win32_frame_size(int width, int height)
+{
+    CHAR_INFO *frame;
+    CHAR_INFO *previous;
+    int count;
+    int i;
+
+    if (width <= 0 || height <= 0)
+        return 0;
+
+    if (width == tui_frame_width && height == tui_frame_height &&
+        tui_frame != 0)
+        return 1;
+
+    count = width * height;
+    frame = (CHAR_INFO *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                                   (SIZE_T)count * sizeof(CHAR_INFO));
+    previous = (CHAR_INFO *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                                      (SIZE_T)count * sizeof(CHAR_INFO));
+    if (frame == 0 || previous == 0) {
+        if (frame != 0)
+            HeapFree(GetProcessHeap(), 0, frame);
+        if (previous != 0)
+            HeapFree(GetProcessHeap(), 0, previous);
+        return 0;
+    }
+
+    for (i = 0; i < count; ++i) {
+        frame[i].Char.UnicodeChar = L' ';
+        frame[i].Attributes = tui_win32_attr(0x07);
+        previous[i].Char.UnicodeChar = 0;
+        previous[i].Attributes = 0;
+    }
+
+    if (tui_frame != 0)
+        HeapFree(GetProcessHeap(), 0, tui_frame);
+    if (tui_previous_frame != 0)
+        HeapFree(GetProcessHeap(), 0, tui_previous_frame);
+    tui_frame = frame;
+    tui_previous_frame = previous;
+    tui_frame_width = width;
+    tui_frame_height = height;
+    tui_frame_dirty = 1;
     return 1;
 }
 
@@ -81,9 +134,9 @@ static WCHAR tui_win32_glyph(int ch)
     case TUI_CH_RIGHT_TRIANGLE:
         return 0x25b6;
     case TUI_CH_SCROLL_TRACK:
-        return 0xb0;
+        return 0x2592;
     case TUI_CH_SCROLL_THUMB:
-        return 0xdb;
+        return 0x2588;
     default:
         return (WCHAR)(unsigned char)ch;
     }
@@ -276,6 +329,11 @@ int tui_console_init(void)
     tui_mouse_left_moved = 0;
     tui_mouse_previous_buttons = 0;
     tui_mouse_last_click_valid = 0;
+    tui_frame = 0;
+    tui_previous_frame = 0;
+    tui_frame_width = 0;
+    tui_frame_height = 0;
+    tui_frame_dirty = 0;
     tui_console_ready = 1;
     return 1;
 }
@@ -283,15 +341,44 @@ int tui_console_init(void)
 void tui_console_shutdown(void)
 {
     CONSOLE_CURSOR_INFO cursor;
+    CONSOLE_SCREEN_BUFFER_INFO info;
+    COORD origin;
+    DWORD cells;
+    DWORD written;
+    WCHAR blank;
+    WORD attribute;
 
     if (!tui_console_ready)
         return;
+
+    if (GetConsoleScreenBufferInfo(tui_output, &info)) {
+        origin = info.dwCursorPosition;
+        origin.X = info.srWindow.Left;
+        origin.Y = info.srWindow.Top;
+        cells = (DWORD)(info.srWindow.Right - info.srWindow.Left + 1) *
+                (DWORD)(info.srWindow.Bottom - info.srWindow.Top + 1);
+        blank = L' ';
+        attribute = tui_win32_attr(0x07);
+        FillConsoleOutputCharacterW(tui_output, blank, cells,
+                                     origin, &written);
+        FillConsoleOutputAttribute(tui_output, attribute, cells,
+                                    origin, &written);
+        SetConsoleCursorPosition(tui_output, origin);
+    }
 
     SetConsoleMode(tui_input, tui_input_mode);
     SetConsoleMode(tui_output, tui_output_mode);
     cursor.dwSize = 25;
     cursor.bVisible = TRUE;
     SetConsoleCursorInfo(tui_output, &cursor);
+    if (tui_frame != 0)
+        HeapFree(GetProcessHeap(), 0, tui_frame);
+    if (tui_previous_frame != 0)
+        HeapFree(GetProcessHeap(), 0, tui_previous_frame);
+    tui_frame = 0;
+    tui_previous_frame = 0;
+    tui_frame_width = 0;
+    tui_frame_height = 0;
     tui_console_ready = 0;
 }
 
@@ -301,7 +388,8 @@ int tui_console_width(void)
 
     if (!GetConsoleScreenBufferInfo(tui_output, &info))
         return 0;
-    return info.srWindow.Right - info.srWindow.Left + 1;
+    tui_window_width = info.srWindow.Right - info.srWindow.Left + 1;
+    return tui_window_width;
 }
 
 int tui_console_height(void)
@@ -310,22 +398,25 @@ int tui_console_height(void)
 
     if (!GetConsoleScreenBufferInfo(tui_output, &info))
         return 0;
-    return info.srWindow.Bottom - info.srWindow.Top + 1;
+    tui_window_height = info.srWindow.Bottom - info.srWindow.Top + 1;
+    return tui_window_height;
 }
 
 void tui_console_cell(int x, int y, int ch, int attr)
 {
-    COORD pos;
+    int width;
+    int height;
     WCHAR glyph;
-    WORD color;
-    DWORD written;
 
-    if (!tui_win32_position(x, y, &pos))
+    width = tui_window_width;
+    height = tui_window_height;
+    if (!tui_win32_frame_size(width, height) ||
+        x < 0 || x >= width || y < 0 || y >= height)
         return;
     glyph = tui_win32_glyph(ch);
-    color = tui_win32_attr(attr);
-    WriteConsoleOutputCharacterW(tui_output, &glyph, 1, pos, &written);
-    WriteConsoleOutputAttribute(tui_output, &color, 1, pos, &written);
+    tui_frame[y * width + x].Char.UnicodeChar = glyph;
+    tui_frame[y * width + x].Attributes = tui_win32_attr(attr);
+    tui_frame_dirty = 1;
 }
 
 int tui_console_key(void)
@@ -369,5 +460,62 @@ void tui_console_cursor(int x, int y, int visible)
 
 void tui_console_present(void)
 {
-    /* Win32 console writes are visible immediately. */
+    CONSOLE_SCREEN_BUFFER_INFO info;
+    COORD source;
+    COORD buffer_size;
+    COORD size;
+    SMALL_RECT target;
+    int x;
+    int y;
+    int start;
+    int end;
+
+    if (tui_frame == 0 || tui_previous_frame == 0 ||
+        !GetConsoleScreenBufferInfo(tui_output, &info))
+        return;
+
+    if (!tui_win32_frame_size(
+            info.srWindow.Right - info.srWindow.Left + 1,
+            info.srWindow.Bottom - info.srWindow.Top + 1))
+        return;
+
+    if (tui_frame_dirty) {
+        for (y = 0; y < tui_frame_height; ++y) {
+            x = 0;
+            while (x < tui_frame_width) {
+                while (x < tui_frame_width &&
+                       tui_frame[y * tui_frame_width + x].Char.UnicodeChar ==
+                       tui_previous_frame[y * tui_frame_width + x].Char.UnicodeChar &&
+                       tui_frame[y * tui_frame_width + x].Attributes ==
+                       tui_previous_frame[y * tui_frame_width + x].Attributes)
+                    ++x;
+                start = x;
+                while (x < tui_frame_width &&
+                       (tui_frame[y * tui_frame_width + x].Char.UnicodeChar !=
+                        tui_previous_frame[y * tui_frame_width + x].Char.UnicodeChar ||
+                        tui_frame[y * tui_frame_width + x].Attributes !=
+                        tui_previous_frame[y * tui_frame_width + x].Attributes))
+                    ++x;
+                end = x;
+                if (start == end)
+                    continue;
+                buffer_size.X = (SHORT)tui_frame_width;
+                buffer_size.Y = (SHORT)tui_frame_height;
+                source.X = (SHORT)start;
+                source.Y = (SHORT)y;
+                size.X = (SHORT)(end - start);
+                size.Y = 1;
+                target.Left = (SHORT)(info.srWindow.Left + start);
+                target.Top = (SHORT)(info.srWindow.Top + y);
+                target.Right = (SHORT)(info.srWindow.Left + end - 1);
+                target.Bottom = target.Top;
+                WriteConsoleOutputW(tui_output, tui_frame, buffer_size,
+                                    source, &target);
+            }
+        }
+        CopyMemory(tui_previous_frame, tui_frame,
+                   (SIZE_T)tui_frame_width * (SIZE_T)tui_frame_height *
+                   sizeof(CHAR_INFO));
+        tui_frame_dirty = 0;
+    }
 }
