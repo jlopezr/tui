@@ -60,9 +60,39 @@ coverage: $(COVERAGE_TARGET)
 	$(LLVM_PROFDATA) merge -sparse $(COVERAGE_DIR)/test_controls.profraw -o $(COVERAGE_DIR)/test_controls.profdata
 	$(LLVM_COV) report ./$(COVERAGE_TARGET) -instr-profile=$(COVERAGE_DIR)/test_controls.profdata --ignore-filename-regex='(^|/)test/.*|(^|/)(tui\.h|console\.h)$$'
 
+# Demo para MiniCPU (prototipo 30): compilar, ensamblar, probar y subir.
+#
+#   make mini               compila y ensambla a _build/tui_mini.bin
+#   make mini-sim           la ejecuta en el simulador (Esc la cierra)
+#   make mini-run           la sube a la placa y la arranca
+#   make mini-run PORT=...  igual, con el puerto a mano
+#
+# Usa los lanzadores de ../tools (hay que tenerlos en el PATH).
+MINI_PROTOTYPE = 30
+MINI_BIN = _build/tui_mini.bin
+MINI_SRC = tui_unity_mini.c tui_unity.c console_mini.c demo.c $(TUI_SRC)
+MINI_SIM_MAX = 50000000
+MINI_PORT = $(if $(PORT),--port $(PORT),)
+
+$(MINI_BIN): $(MINI_SRC) tui.h tui_internal.h console.h
+	mkdir -p _build
+	mini-lcc tui_unity_mini.c -o _build/tui_mini.s
+	mini-asm _build/tui_mini.s -o $(MINI_BIN)
+
+mini: $(MINI_BIN)
+
+mini-sim: $(MINI_BIN)
+	printf '\033' > _build/keys.bin
+	cpusim $(MINI_BIN) --serial-input _build/keys.bin --console-output _build/screen.txt --max $(MINI_SIM_MAX)
+	cat _build/screen.txt
+
+mini-run: $(MINI_BIN)
+	run-board --prototype $(MINI_PROTOTYPE) --program $(MINI_BIN) $(MINI_PORT)
+
 clean:
 	rm -f $(TARGET) $(UNITY_TARGET) $(WIN32_TARGET) $(TEST_TARGET) $(COVERAGE_TARGET) \
 		$(COVERAGE_DIR)/test_controls.profraw \
-		$(COVERAGE_DIR)/test_controls.profdata
+		$(COVERAGE_DIR)/test_controls.profdata \
+		_build/tui_mini.s $(MINI_BIN) _build/keys.bin _build/screen.txt
 
-.PHONY: all clean test coverage unity win32
+.PHONY: all clean test coverage unity win32 mini mini-sim mini-run

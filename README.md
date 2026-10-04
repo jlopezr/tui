@@ -217,15 +217,29 @@ los textos dinámicos:
 ..\tools\mini-asm.ps1 .\_build\tui_mini.s -o .\_build\tui_mini.bin
 ```
 
-Se puede probar sin placa en el simulador funcional, que modela la consola de
-texto. La demo lee el teclado por la serie, así que `--serial-input` hace de
-teclado (aquí, solo `Esc`, que cierra la demo) y `--console-output` vuelca la
-pantalla al terminar:
+Los dos pasos, más probar y subir, están como targets del makefile (en Windows,
+tras `. .\import-vsdev-env.ps1`; en Unix, `make` con `../tools` en el `PATH`):
+
+```powershell
+nmake /f Makefile.msvc mini                 # compila y ensambla a _build\tui_mini.bin
+nmake /f Makefile.msvc mini-sim             # la ejecuta en el simulador y muestra la pantalla
+nmake /f Makefile.msvc mini-run             # la sube a la placa (prototipo 30) y la arranca
+nmake /f Makefile.msvc mini-run PORT=COM3   # igual, con el puerto a mano
+```
+
+`mini-sim` usa el simulador funcional, que modela la consola de texto. La demo
+lee el teclado por la serie, así que `--serial-input` hace de teclado (aquí,
+solo `Esc`, que cierra la demo) y `--console-output` vuelca la pantalla al
+terminar. A mano:
 
 ```powershell
 [IO.File]::WriteAllBytes("keys.bin", [byte[]](27))
 ..\tools\cpusim.ps1 .\_build\tui_mini.bin --serial-input keys.bin --console-output pantalla.txt --max 50000000
 ```
+
+`mini-run` usa `run-board`: comprueba que la placa tenga el bitstream de la 30
+(y lo sube si no), carga el `.bin` y arranca la CPU. Para manejar la demo hace
+falta un terminal serie en el mismo puerto, que `run-board` libera al terminar.
 
 La pila de arranque de `mini-lcc` es de 8 KiB: las estructuras grandes no pueden
 ser locales de `main` (por eso `App` es `static` en `demo.c`). Si la pila se

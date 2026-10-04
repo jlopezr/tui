@@ -5,3 +5,4 @@ demo
 *.exe
 test/test_controls
 /coverage/
+/_build/

@@ -51,6 +51,42 @@ $(TEST_TARGET): $(TEST_SRC) $(TUI_SRC) tui.h tui_internal.h console.h \
 test: $(TEST_TARGET)
 	$(TEST_TARGET)
 
+# --- Demo para MiniCPU (prototipo 30): compilar, ensamblar, probar y subir ---
+#
+#   nmake /f Makefile.msvc mini                 compila y ensambla a _build\tui_mini.bin
+#   nmake /f Makefile.msvc mini-sim             la ejecuta en el simulador (Esc la cierra)
+#   nmake /f Makefile.msvc mini-run             la sube a la placa y la arranca
+#   nmake /f Makefile.msvc mini-run PORT=COM3   igual, con el puerto a mano
+#
+# Los tres reutilizan los lanzadores de ..\tools; no hay logica propia aqui.
+TOOLS = ..\tools
+PS = powershell -NoProfile -ExecutionPolicy Bypass -File
+MINI_PROTOTYPE = 30
+MINI_BIN = _build\tui_mini.bin
+MINI_SRC = tui_unity_mini.c tui_unity.c console_mini.c demo.c $(TUI_SRC)
+MINI_SIM_MAX = 50000000
+!IFDEF PORT
+MINI_PORT = --port $(PORT)
+!ELSE
+MINI_PORT =
+!ENDIF
+
+$(MINI_BIN): $(MINI_SRC) tui.h tui_internal.h console.h
+	@if not exist _build mkdir _build
+	$(PS) $(TOOLS)\mini-lcc.ps1 tui_unity_mini.c -o _build\tui_mini.s
+	$(PS) $(TOOLS)\mini-asm.ps1 _build\tui_mini.s -o $(MINI_BIN)
+
+mini: $(MINI_BIN)
+
+mini-sim: $(MINI_BIN)
+	@powershell -NoProfile -Command "[IO.File]::WriteAllBytes('_build\keys.bin', [byte[]](27))"
+	$(PS) $(TOOLS)\cpusim.ps1 $(MINI_BIN) --serial-input _build\keys.bin --console-output _build\screen.txt --max $(MINI_SIM_MAX)
+	@type _build\screen.txt
+
+mini-run: $(MINI_BIN)
+	$(PS) $(TOOLS)\run-board.ps1 --prototype $(MINI_PROTOTYPE) --program $(MINI_BIN) $(MINI_PORT)
+
 clean:
 	-del /q $(TARGET) $(VT_TARGET) $(PROFILE_TARGET) \
 		$(PROFILE_FULL_TARGET) $(TEST_TARGET) *.obj 2>NUL
+	-del /q _build\tui_mini.s _build\tui_mini.bin _build\keys.bin _build\screen.txt 2>NUL
