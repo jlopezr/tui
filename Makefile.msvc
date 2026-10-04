@@ -80,7 +80,7 @@ mini: $(MINI_BIN)
 
 mini-sim: $(MINI_BIN)
 	@powershell -NoProfile -Command "[IO.File]::WriteAllBytes('_build\keys.bin', [byte[]](27))"
-	$(PS) $(TOOLS)\cpusim.ps1 $(MINI_BIN) --serial-input _build\keys.bin --console-output _build\screen.txt --max $(MINI_SIM_MAX)
+	$(PS) $(TOOLS)\cpusim.ps1 $(MINI_BIN) --serial-input _build\keys.bin --console-output _build\screen.txt --run-limit $(MINI_SIM_MAX)
 	@type _build\screen.txt
 
 mini-run: $(MINI_BIN)

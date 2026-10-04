@@ -234,7 +234,7 @@ terminar. A mano:
 
 ```powershell
 [IO.File]::WriteAllBytes("keys.bin", [byte[]](27))
-..\tools\cpusim.ps1 .\_build\tui_mini.bin --serial-input keys.bin --console-output pantalla.txt --max 50000000
+..\tools\cpusim.ps1 .\_build\tui_mini.bin --serial-input keys.bin --console-output pantalla.txt --run-limit 50000000
 ```
 
 `mini-run` usa `run-board`: comprueba que la placa tenga el bitstream de la 30

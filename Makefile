@@ -83,7 +83,7 @@ mini: $(MINI_BIN)
 
 mini-sim: $(MINI_BIN)
 	printf '\033' > _build/keys.bin
-	cpusim $(MINI_BIN) --serial-input _build/keys.bin --console-output _build/screen.txt --max $(MINI_SIM_MAX)
+	cpusim $(MINI_BIN) --serial-input _build/keys.bin --console-output _build/screen.txt --run-limit $(MINI_SIM_MAX)
 	cat _build/screen.txt
 
 mini-run: $(MINI_BIN)
