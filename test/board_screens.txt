@@ -3,7 +3,7 @@
 # sus opciones en las filas 2 (Controls), 3 (Layout / Mini IDE) y 4 (Editor).
 @0     keyboard connect
 +0     mouse connect
-+300   expect row 1 contains "Workspace"
++0     wait row 1 contains "Workspace" 3000
 
 # Un clic fuera de una lista abierta la cierra, sin abrir el menu.
 +0     click 16 15

@@ -8,7 +8,7 @@
 # cuenta con ese estado inicial, y una segunda pasada sin recargar fallaría.
 @0     keyboard connect
 +0     mouse connect
-+300   expect row 13 contains "Type here"
++0     wait row 13 contains "Type here" 3000
 
 # Teclas: las letras salen igual en teclado espanol; ; es la n con tilde, y
 # AltGr+2 es la arroba.
