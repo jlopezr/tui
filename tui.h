@@ -615,6 +615,13 @@ void tui_combobox_set_scrollbar(TuiComboBox *combo, int enabled);
 void tui_combobox_set_command(TuiComboBox *combo, int command);
 
 /*
+ * Closes the drop-down list without choosing anything, as Esc does. Does nothing
+ * if it is not open. Use it when the combo box goes away while its list is open
+ * (the list is a window of the desktop, not of the combo box's own window).
+ */
+void tui_combobox_close(TuiComboBox *combo);
+
+/*
  * Edit
  */
 void tui_edit_init(TuiEdit *edit,

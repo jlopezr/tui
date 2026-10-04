@@ -449,3 +449,14 @@ void tui_combobox_set_command(TuiComboBox *combo, int command)
     if (combo != 0)
         combo->command = command;
 }
+
+void tui_combobox_close(TuiComboBox *combo)
+{
+    TuiEvent unused;
+
+    if (combo == 0 || !combo->open)
+        return;
+
+    /* Cancelling never turns the event into a command, so 'unused' stays unused. */
+    combobox_close(combo, 0, &unused);
+}

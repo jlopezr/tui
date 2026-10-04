@@ -108,21 +108,9 @@ typedef struct App {
 
 static void demo_hide_active(App *app)
 {
-    TuiEvent event;
-
-    if (app->active_demo == DEMO_CONTROLS &&
-        (app->optimization_combo.open ||
-         app->scroll_combo.open)) {
-        event.type = TUI_EV_KEY;
-        event.key = TUI_KEY_ESCAPE;
-        event.command = TUI_CMD_NONE;
-        event.source = 0;
-        event.mouse_x = 0;
-        event.mouse_y = 0;
-        event.mouse_action = 0;
-        event.mouse_buttons = 0;
-        tui_dispatch(&app->desktop, &event);
-    }
+    /* Their lists are windows of the desktop: they would outlive the screen. */
+    tui_combobox_close(&app->optimization_combo);
+    tui_combobox_close(&app->scroll_combo);
 
     tui_desktop_set_focus(&app->desktop, 0);
     tui_desktop_clear_capture(&app->desktop);

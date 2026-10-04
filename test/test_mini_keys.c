@@ -709,6 +709,40 @@ static void test_pending_big_rectangle_absorbs_small_ones(void)
     CHECK(pending_equals_full(&s.desktop));
 }
 
+/* Closing the list from outside cancels, like Esc, and repaints what it covered. */
+static void test_combobox_close_cancels(void)
+{
+    Widgets w;
+
+    widgets_build(&w);
+    tui_draw(&w.desktop);
+
+    /* Closed already: nothing to do and nothing to repaint. */
+    tui_combobox_close(&w.combo);
+    CHECK(!w.combo.open);
+    CHECK(!w.desktop.dirty_all);
+    CHECK(w.desktop.dirty_count == 0 && w.desktop.frame_count == 0);
+
+    tui_desktop_set_focus(&w.desktop, &w.combo.control);
+    test_key(&w.desktop, ' ');
+    test_key(&w.desktop, TUI_KEY_DOWN);
+    test_key(&w.desktop, TUI_KEY_DOWN);
+    CHECK(w.combo.open);
+    CHECK(w.desktop.capture == &w.combo.control);
+    CHECK(w.combo.popup_window.control.parent != 0);
+    tui_draw_pending(&w.desktop);
+
+    tui_combobox_close(&w.combo);
+    CHECK(!w.combo.open);
+    CHECK(w.desktop.capture == 0);
+    CHECK(w.combo.popup_window.control.parent == 0);
+    CHECK(tui_combobox_get_selected(&w.combo) == 0);     /* nothing was chosen */
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+
+    tui_combobox_close(0);                                /* harmless */
+}
+
 static int command_ran = 0;
 
 /* Whether the text of a screen row contains "text" (the 8-bit chars are plain here). */
@@ -911,6 +945,8 @@ void test_mini_keys_suite(void)
                   test_pending_big_rectangle_absorbs_small_ones);
     test_run_case("pending redraw: combo opened from another window",
                   test_pending_combo_from_another_window);
+    test_run_case("combo box closed from outside cancels",
+                  test_combobox_close_cancels);
     test_run_case("command table lookup", test_command_table_lookup);
     test_run_case("commands run by tui_dispatch", test_commands_run_by_dispatch);
     test_run_case("pending redraw: unhandled key draws nothing",
