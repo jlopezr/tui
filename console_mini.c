@@ -26,11 +26,12 @@ static unsigned int mini_cursor_under;
  * Hardware colour index 0 is transparent: a glyph pixel or background drawn
  * with it shows the framebuffer underneath. DOS black (0) therefore cannot
  * live there, and the 16 DOS colours have to share the 15 opaque slots.
- * Black takes the slot of light magenta, and light magenta is merged into
- * magenta. The library itself uses neither.
+ * Colours are laid out in DOS order from slot 1, skipping light magenta,
+ * which is merged into magenta (the library uses neither). Yellow and white
+ * keep their DOS numbers. Slot 0 is never written.
  */
 static const unsigned char mini_slot[16] = {
-    13, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 5, 14, 15
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 6, 14, 15
 };
 
 static unsigned int mini_cell(int ch, int attr)
