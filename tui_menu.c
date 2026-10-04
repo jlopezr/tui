@@ -202,14 +202,17 @@ static void tui_popup_set_selected(TuiPopupMenu *popup, int item)
     if (item == popup->selected)
         return;
 
-    /* Only the row that was highlighted and the one that is now (item i is row i + 1). */
+    /*
+     * Only the text of the row that was highlighted and of the one that is now (item
+     * i is row i + 1): the border at both ends does not change.
+     */
     if (popup->selected >= 0)
-        tui_invalidate_rect(&popup->control, 0, popup->selected + 1,
-                            popup->control.width, 1);
+        tui_invalidate_rect(&popup->control, 1, popup->selected + 1,
+                            popup->control.width - 2, 1);
 
     if (item >= 0)
-        tui_invalidate_rect(&popup->control, 0, item + 1,
-                            popup->control.width, 1);
+        tui_invalidate_rect(&popup->control, 1, item + 1,
+                            popup->control.width - 2, 1);
 
     popup->selected = item;
 }
