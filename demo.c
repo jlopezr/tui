@@ -813,6 +813,38 @@ static int command_is_light(int command)
 }
 
 /*
+ * The drop-down window of the combo box that holds the mouse capture, or 0.
+ * While it is open nothing but that window changes (hovering, arrows, scrolling);
+ * the combo box itself only changes when it closes, which alters the window tree.
+ */
+static TuiControl *demo_open_popup(App *app)
+{
+    TuiComboBox *combos[2];
+    int i;
+
+    combos[0] = &app->optimization_combo;
+    combos[1] = &app->scroll_combo;
+
+    for (i = 0; i < 2; ++i) {
+        if (combos[i]->open &&
+            app->desktop.capture == &combos[i]->control &&
+            combos[i]->popup_window.control.parent != 0)
+            return &combos[i]->popup_window.control;
+    }
+
+    return 0;
+}
+
+/* 1 while the open drop-down list has its scroll bar being dragged. */
+static int demo_popup_dragging(App *app)
+{
+    return (app->optimization_combo.open &&
+            app->optimization_combo.popup_list.scrollbar.dragging) ||
+           (app->scroll_combo.open &&
+            app->scroll_combo.popup_list.scrollbar.dragging);
+}
+
+/*
  * Work out what a handled event changed. Returns 0 when the answer is "could be
  * anything", and the caller repaints the whole screen.
  *
@@ -833,6 +865,10 @@ static int demo_plan(App *app, const TuiEvent *event, int no_handler_ok,
     /* A popup came or went: it covers cells outside any control we know. */
     if (app->desktop.control.last != old_top)
         return 0;
+
+    /* A drop-down list stays open: only the list itself can have changed. */
+    if (demo_open_popup(app) != 0)
+        return areas_add(areas, demo_open_popup(app));
 
     handler = app->desktop.last_handler;
 
@@ -904,6 +940,7 @@ int main(void)
     int handled;
     int was_tab;
     int had_capture;
+    int had_popup;
     TuiControl *old_focus;
     TuiControl *old_top;
 
@@ -946,12 +983,19 @@ int main(void)
             old_focus = tui_desktop_get_focus(&app.desktop);
             old_top = app.desktop.control.last;
             had_capture = app.desktop.capture != 0;
+            had_popup = demo_open_popup(&app) != 0;
             was_tab = event.type == TUI_EV_KEY && event.key == TUI_KEY_TAB &&
                       !had_capture;
 
             handled = tui_dispatch(&app.desktop, &event);
 
-            if (!handled) {
+            if (event.type == TUI_EV_MOUSE &&
+                event.mouse_action == TUI_MOUSE_MOVE &&
+                had_popup && demo_open_popup(&app) != 0 &&
+                !demo_popup_dragging(&app)) {
+                /* The open list swallows the move, but nothing in it reacts. */
+                redraw = REDRAW_NONE;
+            } else if (!handled) {
                 /*
                  * Nothing reacted. A key or a mouse move over nothing changes
                  * nothing on screen (the pointer is the console's business).
@@ -962,10 +1006,11 @@ int main(void)
                 if (event.type == TUI_EV_KEY ||
                     (event.type == TUI_EV_MOUSE &&
                      event.mouse_action == TUI_MOUSE_MOVE &&
-                     !had_capture))
+                     (!had_capture || had_popup)))
                     redraw = REDRAW_NONE;
                 else if (event.type == TUI_EV_MOUSE &&
-                         !had_capture && app.desktop.capture == 0 &&
+                         (!had_capture || had_popup) &&
+                         (app.desktop.capture == 0 || demo_open_popup(&app) != 0) &&
                          demo_plan(&app, &event, 1, old_focus, old_top,
                                    &areas))
                     redraw = REDRAW_AREAS;
