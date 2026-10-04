@@ -103,6 +103,16 @@ void tui_console_shutdown(void);
  */
 int  tui_console_printable(int key);
 
+/*
+ * Whether a mouse can deliver events right now. Keys are always available (a
+ * terminal, the serial line, a keyboard), so there is no such question for them;
+ * the mouse is optional and on some machines it comes and goes while the program
+ * runs (the MiniCPU console only has one when something is plugged into its INPUT
+ * block), so ask when it matters rather than once at start-up. An application can
+ * use it to show or hide hints about clicking, or to skip drawing a pointer.
+ */
+int  tui_console_has_mouse(void);
+
 int  tui_console_width(void);
 int  tui_console_height(void);
 

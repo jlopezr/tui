@@ -82,6 +82,12 @@ void tui_console_mouse(int *x, int *y, int *action, int *buttons)
 }
 
 int test_console_8bit = 0;
+int test_console_mouse = 1;
+
+int tui_console_has_mouse(void)
+{
+    return test_console_mouse;
+}
 
 int tui_console_printable(int key)
 {

@@ -16,6 +16,7 @@ extern int test_cursor_x;
 extern int test_cursor_y;
 extern int test_cursor_visible;
 extern int test_console_8bit;
+extern int test_console_mouse;
 
 void test_check(int condition,
                 const char *expression,

@@ -473,6 +473,11 @@ int tui_console_key(void)
     }
 }
 
+int tui_console_has_mouse(void)
+{
+    return 1;               /* mousemask() en tui_console_init; si el terminal no, no llegan */
+}
+
 int tui_console_printable(int key)
 {
     return TUI_ASCII_PRINTABLE(key);

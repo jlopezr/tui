@@ -17,6 +17,7 @@
 #define MINI_IN_EVENT        (*(volatile unsigned int *)0x80600000)
 #define MINI_IN_STATUS       (*(volatile unsigned int *)0x80600004)
 #define MINI_IN_KEY_STATE    ((volatile unsigned int *)0x80600010)
+#define MINI_IN_MOUSE_PRESENT 0x40000   /* STATUS bit 18; el bit 17 es el teclado */
 
 #define MINI_WIDTH           80
 #define MINI_HEIGHT          30
@@ -576,6 +577,17 @@ void tui_console_mouse(int *x, int *y, int *action, int *buttons)
     *y = mini_mouse_y;
     *action = mini_mouse_action ? mini_mouse_action : TUI_MOUSE_MOVE;
     *buttons = mini_mouse_buttons;
+}
+
+/*
+ * El bloque INPUT existe o no desde que arranca el sistema (SYSTEM.DEVICES, que
+ * se mira en tui_console_init), pero el RATON lo conecta o desconecta quien lo
+ * alimenta --`monitor.py input`-- con el programa en marcha: la presencia se lee
+ * del STATUS cada vez, que es una sola lectura de MMIO.
+ */
+int tui_console_has_mouse(void)
+{
+    return mini_input_enabled && (MINI_IN_STATUS & MINI_IN_MOUSE_PRESENT) != 0;
 }
 
 /* La consola dibuja CP437: ademas del ASCII, las letras y signos de 128..255. */

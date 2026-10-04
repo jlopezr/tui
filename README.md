@@ -247,7 +247,11 @@ falta un terminal serie en el mismo puerto, que `run-board` libera al terminar.
 entradas conviven: lo que llegue antes. La entrada nueva sale de
 `monitor.py input` (el teclado y el ratón del PC, sin nada conectado a la FPGA).
 Si `SYSTEM.DEVICES` no declara INPUT, la consola funciona como antes, solo con
-serie.
+serie. Eso se decide una vez, en `tui_console_init`. Lo que cambia con el programa
+en marcha es qué hay enchufado a INPUT (quien lo alimenta conecta y desconecta el
+ratón), así que una aplicación puede preguntar `tui_console_has_mouse()`, que lee
+la presencia del STATUS en ese momento; las teclas siempre llegan, al menos por la
+serie. Los backends de PC devuelven 1.
 
 - **Teclado español** (`mini_keys.h`). INPUT entrega teclas físicas; la tabla
   las convierte en CP437: `ñ Ñ ç Ç ¡ ¿ º ª`, AltGr (`@ # | ~ [ ] { } \`), acentos
