@@ -25,17 +25,17 @@
 #define CMD_DEMO_EDITOR   119
 #define CMD_EDITOR_STATE  120
 
-#define DEMO_NONE         0
-#define DEMO_CONTROLS     1
-#define DEMO_LAYOUT       2
-#define DEMO_EDITOR       3
+#define DEMO_CONTROLS     0
+#define DEMO_LAYOUT       1
+#define DEMO_EDITOR       2
+#define DEMO_COUNT        3
 
 typedef struct App {
     int running;
     int active_demo;
 
-    /* One panel per screen, indexed by DEMO_* (index 0 is not used). */
-    TuiPanel screen[DEMO_EDITOR + 1];
+    /* One panel per screen, indexed by DEMO_*; active_demo is always one of them. */
+    TuiPanel screen[DEMO_COUNT];
 
     TuiDesktop desktop;
     TuiMenuBar menu_bar;
@@ -126,9 +126,7 @@ static void demo_switch_to(App *app, int screen)
     if (app->active_demo == screen)
         return;
 
-    if (app->active_demo != DEMO_NONE)
-        tui_remove(&app->screen[app->active_demo].control);
-
+    tui_remove(&app->screen[app->active_demo].control);
     tui_add(&app->desktop.control, &app->screen[screen].control);
     app->active_demo = screen;
 }
@@ -776,10 +774,13 @@ int main(void)
     /* Commands run by themselves in tui_dispatch(); their text goes to the status bar. */
     tui_desktop_set_commands(&app.desktop, command_table, &app, &app.status_bar);
 
-    app.active_demo = DEMO_NONE;
     demo_build_controls(&app);
     demo_build_layout(&app);
     demo_build_editor(&app);
+
+    /* There is always an active screen: Controls is the first one. */
+    app.active_demo = DEMO_CONTROLS;
+    tui_add(&app.desktop.control, &app.screen[DEMO_CONTROLS].control);
     demo_show_controls(&app);
 
     app.running = 1;
