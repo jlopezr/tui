@@ -320,27 +320,35 @@ el rectángulo una vez en vez de celda a celda.
 
 #### Tabla de comandos
 
-Un control (un botón, una opción de menú, una barra) emite un número de comando; lo
-que significa lo decide la aplicación. En vez de una cadena de `if` sobre ese
-número, se describe en una tabla y la biblioteca busca la entrada:
+Un control (un botón, una opción de menú, una barra de desplazamiento) convierte un
+evento en un número de comando; lo que significa lo decide la aplicación. En vez de
+una cadena de `if` sobre ese número, se describe en una tabla que se registra una
+vez en el escritorio, y `tui_dispatch` ejecuta el comando él solo:
 
 ```c
 static const TuiCommand commands[] = {
-    { CMD_SAVE, "Command: File -> Save", 0 },        /* texto para la barra de estado */
-    { CMD_QUIT, "Command: File -> Exit", do_quit },  /* y una acción */
-    { CMD_ABOUT, 0, show_about }                     /* cualquiera de las dos puede faltar */
+    { CMD_SAVE,  "File saved", do_save },   /* texto para la barra de estado y una acción */
+    { CMD_QUIT,  "Bye",        do_quit },
+    { CMD_ABOUT, 0,            show_about },/* cualquiera de las dos puede faltar */
+    TUI_COMMANDS_END                        /* la tabla acaba con una fila vacía: sin 'count' */
 };
 
-entry = tui_command_find(commands, 3, event.command);
-if (entry != 0) {
-    if (entry->text) tui_statusbar_set_text(&status, entry->text);
-    if (entry->run)  entry->run(app, event.command);
-}
+tui_desktop_set_commands(&desktop, commands, &app, &status_bar);
+...
+tui_dispatch(&desktop, &event);             /* el comando se ejecuta aquí dentro */
 ```
 
-`demo.c` lo usa así: `dispatch_command` son cuatro líneas y añadir un comando es
-añadir una fila. La biblioteca solo busca; qué hacer con el texto y con `run` es de
-la aplicación (el contexto que se le pasa a `run` es suyo).
+- **`text`** va a la barra de estado que se pasa a `tui_desktop_set_commands` (si es
+  0, o la entrada no tiene texto, no se muestra nada).
+- **`run(context, command)`** se llama con el contexto que se pasó al registrar la
+  tabla, normalmente la estructura de la aplicación.
+- Un comando que **no está en la tabla** se ignora, y el evento sigue siendo un
+  `TUI_EV_COMMAND`, así que la aplicación puede tratar a mano los que quiera.
+- `tui_command_find(tabla, comando)` busca una entrada y `tui_command_run(&desktop,
+  comando)` ejecuta uno a mano (un atajo que la aplicación gestiona).
+
+En `demo.c` no hay función de despacho ni bucle que mire los comandos: añadir uno es
+añadir una fila.
 
 **Trampa de `mini-lcc`**: `(unsigned char)x` sobre un `int` no enmascara. Un
 carácter ≥128 leído de un buffer de `char` llega con el signo extendido

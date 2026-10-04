@@ -417,6 +417,9 @@ void tui_desktop_init(TuiDesktop *desktop)
     desktop->dirty_count = 0;
     desktop->frame_count = 0;
     desktop->dirty_serial = 0;
+    desktop->commands = 0;
+    desktop->command_context = 0;
+    desktop->command_status = 0;
     desktop->partial_draw = 0;
 }
 
@@ -779,17 +782,45 @@ void tui_draw(TuiDesktop *desktop)
  * ------------------------------------------------------------
  */
 
-const TuiCommand *tui_command_find(const TuiCommand *table, int count,
-                                   int command)
+const TuiCommand *tui_command_find(const TuiCommand *table, int command)
 {
-    int i;
+    if (table == 0 || command == TUI_CMD_NONE)
+        return 0;
 
-    for (i = 0; i < count; ++i) {
-        if (table[i].command == command)
-            return &table[i];
+    for (; table->command != TUI_CMD_NONE; ++table) {
+        if (table->command == command)
+            return table;
     }
 
     return 0;
+}
+
+void tui_desktop_set_commands(TuiDesktop *desktop,
+                              const TuiCommand *table,
+                              void *context,
+                              struct TuiStatusBar *status)
+{
+    desktop->commands = table;
+    desktop->command_context = context;
+    desktop->command_status = status;
+}
+
+int tui_command_run(TuiDesktop *desktop, int command)
+{
+    const TuiCommand *entry;
+
+    entry = tui_command_find(desktop->commands, command);
+
+    if (entry == 0)
+        return 0;
+
+    if (entry->text != 0 && desktop->command_status != 0)
+        tui_statusbar_set_text(desktop->command_status, entry->text);
+
+    if (entry->run != 0)
+        entry->run(desktop->command_context, command);
+
+    return 1;
 }
 
 /*
@@ -1351,6 +1382,10 @@ int tui_dispatch(TuiDesktop *desktop,
     serial = desktop->dirty_serial;
 
     handled = tui_dispatch_event(desktop, event);
+
+    /* The event turned into a command: the registered table says what it means. */
+    if (handled && event->type == TUI_EV_COMMAND)
+        tui_command_run(desktop, event->command);
 
     /*
      * Handled, yet nothing was invalidated: the control does not report what

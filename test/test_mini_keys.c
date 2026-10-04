@@ -711,6 +711,24 @@ static void test_pending_big_rectangle_absorbs_small_ones(void)
 
 static int command_ran = 0;
 
+/* Whether the text of a screen row contains "text" (the 8-bit chars are plain here). */
+static int row_has(int row, const char *text)
+{
+    int x;
+    int k;
+
+    for (x = 0; x < TEST_WIDTH; ++x) {
+        for (k = 0; text[k] != '\0' && x + k < TEST_WIDTH; ++k) {
+            if (test_cell_chars[row][x + k] != text[k])
+                break;
+        }
+        if (text[k] == '\0')
+            return 1;
+    }
+
+    return 0;
+}
+
 static void command_action(void *context, int command)
 {
     *(int *)context += command;
@@ -720,30 +738,109 @@ static void command_action(void *context, int command)
 static void test_command_table_lookup(void)
 {
     static const TuiCommand table[] = {
-        { 10, "ten",   0 },
-        { 20, 0,       command_action },
-        { 30, "thirty", command_action }
+        { 10, "ten",    0 },
+        { 20, 0,        command_action },
+        { 30, "thirty", command_action },
+        TUI_COMMANDS_END,
+        { 40, "after the end", 0 }
     };
     const TuiCommand *entry;
-    int context;
 
-    entry = tui_command_find(table, 3, 10);
+    entry = tui_command_find(table, 10);
     CHECK(entry == &table[0]);
     CHECK(entry->text != 0 && entry->run == 0);
 
-    entry = tui_command_find(table, 3, 30);
-    CHECK(entry == &table[2]);
+    entry = tui_command_find(table, 20);
+    CHECK(entry == &table[1] && entry->text == 0 && entry->run != 0);
 
-    /* The library only finds; the caller decides what to do with the entry. */
-    context = 5;
+    CHECK(tui_command_find(table, 30) == &table[2]);
+
+    /* Not there, past the end marker, none at all, and the marker itself. */
+    CHECK(tui_command_find(table, 99) == 0);
+    CHECK(tui_command_find(table, 40) == 0);
+    CHECK(tui_command_find(0, 10) == 0);
+    CHECK(tui_command_find(table, TUI_CMD_NONE) == 0);
+}
+
+/* A button's command goes through the table by itself, in tui_dispatch(). */
+static void test_commands_run_by_dispatch(void)
+{
+    static const TuiCommand table[] = {
+        { 7, "seven pressed", command_action },
+        { 8, "just text",     0 },
+        TUI_COMMANDS_END
+    };
+    TuiDesktop desktop;
+    TuiWindow window;
+    TuiButton seven;
+    TuiButton eight;
+    TuiButton unknown;
+    TuiStatusBar status;
+    TuiStatusItem items[1];
+    int context;
+    int x1, y1, x2, y2;
+
+    items[0].text = "F1";
+    items[0].key = TUI_KEY_F1;
+    items[0].command = TUI_CMD_NONE;
+
+    test_init_desktop(&desktop);
+    tui_window_init(&window, 1, 1, 30, 8, "Commands");
+    tui_button_init(&seven, 1, 1, 10, "Seven", 7);
+    tui_button_init(&eight, 1, 2, 10, "Eight", 8);
+    tui_button_init(&unknown, 1, 3, 10, "Nine", 9);
+    tui_statusbar_init(&status, items, 1);
+    tui_statusbar_set_text(&status, "Ready");
+    tui_add(&desktop.control, &window.control);
+    tui_add(&window.control, &seven.control);
+    tui_add(&window.control, &eight.control);
+    tui_add(&window.control, &unknown.control);
+    tui_add(&desktop.control, &status.control);
+    tui_draw(&desktop);
+
+    context = 100;
     command_ran = 0;
-    entry = tui_command_find(table, 3, 20);
-    CHECK(entry != 0 && entry->text == 0 && entry->run != 0);
-    entry->run(&context, 20);
-    CHECK(context == 25 && command_ran == 20);
+    tui_desktop_set_commands(&desktop, table, &context, &status);
 
-    CHECK(tui_command_find(table, 3, 99) == 0);
-    CHECK(tui_command_find(table, 0, 10) == 0);
+    /* Text goes to the status bar, the action gets the context, and it repaints it. */
+    tui_desktop_set_focus(&desktop, &seven.control);
+    tui_draw_pending(&desktop);
+    CHECK(test_key(&desktop, ' '));
+    CHECK(context == 107 && command_ran == 7);
+    CHECK(!desktop.dirty_all);
+    CHECK(pending_equals_full(&desktop));
+    tui_control_rect(&status.control, &x1, &y1, &x2, &y2);
+    CHECK(row_has(y1, "seven pressed"));
+
+    /* An entry with only text does not call anything. */
+    tui_desktop_set_focus(&desktop, &eight.control);
+    CHECK(test_key(&desktop, ' '));
+    CHECK(context == 107);
+    CHECK(pending_equals_full(&desktop));
+    CHECK(row_has(y1, "just text"));
+
+    /* A command that is not in the table is ignored, and the event still says so. */
+    tui_desktop_set_focus(&desktop, &unknown.control);
+    CHECK(test_key(&desktop, ' '));
+    CHECK(context == 107);
+    CHECK(row_has(y1, "just text"));                  /* unchanged */
+
+    /* Without a status bar the text is simply not shown. */
+    tui_desktop_set_commands(&desktop, table, &context, 0);
+    tui_desktop_set_focus(&desktop, &seven.control);
+    CHECK(test_key(&desktop, ' '));
+    CHECK(context == 114);
+
+    /* Without a table nothing runs, as before. */
+    tui_desktop_set_commands(&desktop, 0, 0, 0);
+    CHECK(test_key(&desktop, ' '));
+    CHECK(context == 114);
+
+    /* And by hand. */
+    tui_desktop_set_commands(&desktop, table, &context, &status);
+    CHECK(tui_command_run(&desktop, 7));
+    CHECK(context == 121);
+    CHECK(!tui_command_run(&desktop, 99));
 }
 
 static void test_unhandled_key_draws_nothing(void)
@@ -815,6 +912,7 @@ void test_mini_keys_suite(void)
     test_run_case("pending redraw: combo opened from another window",
                   test_pending_combo_from_another_window);
     test_run_case("command table lookup", test_command_table_lookup);
+    test_run_case("commands run by tui_dispatch", test_commands_run_by_dispatch);
     test_run_case("pending redraw: unhandled key draws nothing",
                   test_unhandled_key_draws_nothing);
     test_run_case("pending redraw: unreported event repaints all",

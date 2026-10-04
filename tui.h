@@ -194,18 +194,27 @@ struct TuiControl {
 
 
 /*
- * Commands. An application describes what each command means in a table and asks
- * the library to find the entry, instead of testing the command number by hand:
+ * Commands. A control (a button, a menu item, a scroll bar) turns an event into a
+ * command number; what the number means is the application's. Instead of a chain
+ * of tests on it, the application describes the commands in a table, registers it
+ * once on the desktop, and tui_dispatch() runs them:
  *
  *     static const TuiCommand commands[] = {
- *         { CMD_SAVE, "Saved",  do_save },
- *         { CMD_QUIT, "Bye",    do_quit },
- *         { CMD_HELP, "Help...", 0 }
+ *         { CMD_SAVE,  "File saved", do_save },
+ *         { CMD_QUIT,  "Bye",        do_quit },
+ *         { CMD_HELP,  "Help...",    0 },
+ *         TUI_COMMANDS_END
  *     };
- *     entry = tui_command_find(commands, 3, event.command);
  *
- * 'text' is whatever the application shows for the command (a status line), and
- * 'run' what it does about it; either may be 0.
+ *     tui_desktop_set_commands(&desktop, commands, &app, &status_bar);
+ *     ...
+ *     tui_dispatch(&desktop, &event);          // runs the command by itself
+ *
+ * 'text' goes to the status bar given to tui_desktop_set_commands() (nothing if
+ * there is none, or if the entry has no text); 'run' is called with the context
+ * given there. Either may be 0. A command that is not in the table is ignored, and
+ * the event still says it was a command, so an application can also handle some by
+ * hand.
  */
 typedef struct TuiCommand {
     int command;
@@ -213,9 +222,11 @@ typedef struct TuiCommand {
     void (*run)(void *context, int command);
 } TuiCommand;
 
+/* The table ends with this row, so it needs no count. */
+#define TUI_COMMANDS_END { TUI_CMD_NONE, 0, 0 }
+
 /* The entry for 'command', or 0 if the table does not have it. */
-const TuiCommand *tui_command_find(const TuiCommand *table, int count,
-                                   int command);
+const TuiCommand *tui_command_find(const TuiCommand *table, int command);
 
 /*
  * Rectangles remembered between two draws. With more, the new one is merged into
@@ -267,9 +278,27 @@ struct TuiDesktop {
     /* Counts every invalidation, so tui_dispatch() can tell if one happened. */
     int dirty_serial;
 
+    /* The command table (see TuiCommand), what 'run' gets, and where text goes. */
+    const TuiCommand *commands;
+    void *command_context;
+    struct TuiStatusBar *command_status;
+
     /* Set while tui_draw_region() works: controls outside it are skipped. */
     int partial_draw;
 };
+
+/*
+ * Registers the command table. 'status' is the status bar that shows the text of
+ * a command, or 0. From then on tui_dispatch() runs a command by itself when an
+ * event turns into one.
+ */
+void tui_desktop_set_commands(TuiDesktop *desktop,
+                              const TuiCommand *table,
+                              void *context,
+                              struct TuiStatusBar *status);
+
+/* Runs one command by hand (a shortcut the application handles itself). */
+int  tui_command_run(TuiDesktop *desktop, int command);
 
 
 /*

@@ -229,11 +229,9 @@ static const TuiCommand command_table[] = {
     { CMD_DEMO_LAYOUT,   "Demo: Layout / Mini IDE",        cmd_demo_layout },
     { CMD_DEMO_EDITOR,   "Demo: Editor",                   cmd_demo_editor },
     { CMD_EDITOR_STATE,  0,                                cmd_editor_state },
-    { CMD_QUIT,          "Command: File -> Exit",          cmd_quit }
+    { CMD_QUIT,          "Command: File -> Exit",          cmd_quit },
+    TUI_COMMANDS_END
 };
-
-#define COMMAND_COUNT \
-    ((int)(sizeof(command_table) / sizeof(command_table[0])))
 
 static void demo_update_scroll_labels(App *app)
 {
@@ -266,24 +264,6 @@ static void demo_update_editor_status(App *app)
             "    Modified" : "");
     tui_statusbar_set_text(&app->status_bar, app->editor_status);
 #endif
-}
-
-static int dispatch_command(App *app, int command)
-{
-    const TuiCommand *entry;
-
-    entry = tui_command_find(command_table, COMMAND_COUNT, command);
-
-    if (entry == 0)
-        return 0;
-
-    if (entry->text != 0)
-        tui_statusbar_set_text(&app->status_bar, entry->text);
-
-    if (entry->run != 0)
-        entry->run(app, command);
-
-    return 1;
 }
 
 static void note_control_event(App *app, TuiEvent *event)
@@ -788,6 +768,9 @@ int main(void)
     tui_add(&app.desktop.control, &app.menu_bar.control);
     tui_add(&app.desktop.control, &app.status_bar.control);
 
+    /* Commands run by themselves in tui_dispatch(); their text goes to the status bar. */
+    tui_desktop_set_commands(&app.desktop, command_table, &app, &app.status_bar);
+
     app.active_demo = DEMO_NONE;
     demo_build_controls(&app);
     demo_build_layout(&app);
@@ -814,8 +797,6 @@ int main(void)
             tui_dispatch(&app.desktop, &event);
         }
 
-        if (event.type == TUI_EV_COMMAND)
-            dispatch_command(&app, event.command);
     }
 
     tui_shutdown();
