@@ -419,16 +419,20 @@ void tui_desktop_init(TuiDesktop *desktop)
     desktop->partial_draw = 0;
 }
 
-/* The frame of a window: it looks different when the window is active. */
-static void tui_invalidate_frame(TuiControl *window)
+/*
+ * Only the outer ring of cells of a control. The children of a window live inside
+ * the border, so repainting the ring does not touch them: far cheaper than the
+ * whole control when just the frame changed (the active window, a title).
+ */
+void tui_invalidate_frame(TuiControl *control)
 {
-    if (window == 0)
+    if (control == 0)
         return;
 
-    tui_invalidate_rect(window, 0, 0, window->width, 1);
-    tui_invalidate_rect(window, 0, window->height - 1, window->width, 1);
-    tui_invalidate_rect(window, 0, 0, 1, window->height);
-    tui_invalidate_rect(window, window->width - 1, 0, 1, window->height);
+    tui_invalidate_rect(control, 0, 0, control->width, 1);
+    tui_invalidate_rect(control, 0, control->height - 1, control->width, 1);
+    tui_invalidate_rect(control, 0, 1, 1, control->height - 2);
+    tui_invalidate_rect(control, control->width - 1, 1, 1, control->height - 2);
 }
 
 void tui_desktop_set_focus(TuiDesktop *desktop,
@@ -793,6 +797,11 @@ static void tui_dirty_add(TuiDesktop *desktop,
                           int x1, int y1, int x2, int y2)
 {
     int i;
+    int j;
+    int kept;
+    int best;
+    int best_area;
+    int area;
 
     ++desktop->dirty_serial;
 
@@ -814,8 +823,47 @@ static void tui_dirty_add(TuiDesktop *desktop,
             return;
     }
 
+    /* The new one swallows the ones it covers, which frees their slots. */
+    kept = 0;
+    for (i = 0; i < desktop->dirty_count; ++i) {
+        if (x1 <= desktop->dirty[i][0] && y1 <= desktop->dirty[i][1] &&
+            x2 >= desktop->dirty[i][2] && y2 >= desktop->dirty[i][3])
+            continue;
+
+        if (kept != i) {
+            for (j = 0; j < 4; ++j)
+                desktop->dirty[kept][j] = desktop->dirty[i][j];
+        }
+        ++kept;
+    }
+    desktop->dirty_count = kept;
+
+    /*
+     * No room: grow the rectangle that would grow the least to take this one.
+     * Repainting a little more is cheap; giving up and repainting the whole
+     * screen is not (coming from a control in another window, a click can mark
+     * two frames, raise nested windows and open a list in one go).
+     */
     if (desktop->dirty_count >= TUI_DIRTY_MAX) {
-        desktop->dirty_all = 1;
+        best = 0;
+        best_area = -1;
+
+        for (i = 0; i < desktop->dirty_count; ++i) {
+            area = (tui_max(x2, desktop->dirty[i][2]) -
+                    tui_min(x1, desktop->dirty[i][0])) *
+                   (tui_max(y2, desktop->dirty[i][3]) -
+                    tui_min(y1, desktop->dirty[i][1]));
+
+            if (best_area < 0 || area < best_area) {
+                best_area = area;
+                best = i;
+            }
+        }
+
+        desktop->dirty[best][0] = tui_min(x1, desktop->dirty[best][0]);
+        desktop->dirty[best][1] = tui_min(y1, desktop->dirty[best][1]);
+        desktop->dirty[best][2] = tui_max(x2, desktop->dirty[best][2]);
+        desktop->dirty[best][3] = tui_max(y2, desktop->dirty[best][3]);
         return;
     }
 

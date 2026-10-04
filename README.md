@@ -284,8 +284,12 @@ tui_draw_pending(&desktop);       /* en vez de tui_draw() */
 ```
 
 - **`tui_invalidate(control)`** y `tui_invalidate_rect()` (en coordenadas del
-  control) marcan un rectángulo como sucio. El escritorio recuerda hasta
-  `TUI_DIRTY_MAX` rectángulos; con más, el siguiente dibujo es completo.
+  control) marcan un rectángulo como sucio, y **`tui_invalidate_frame(control)`**
+  solo el anillo exterior de celdas (para un marco que cambia sin tocar lo de
+  dentro: la ventana activa, un título). El escritorio recuerda hasta
+  `TUI_DIRTY_MAX` rectángulos: un rectángulo nuevo absorbe los más pequeños que
+  contiene, y si aun así no hay hueco se funde con el que menos crece, de modo que
+  una ráfaga de cambios repinta algo de más pero nunca la pantalla entera.
 - **Cada control invalida lo suyo**: Edit, TextArea, Editor, ListBox, CheckBox,
   RadioButton (y los hermanos que desmarca), ComboBox, ScrollBar, Label y
   StatusBar, tanto al gestionar un evento como en sus `set_*`. Añadir

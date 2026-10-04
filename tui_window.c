@@ -304,7 +304,7 @@ void tui_window_set_flags(TuiWindow *window, unsigned flags)
     TuiDesktop *desktop;
 
     window->flags = flags;
-    tui_invalidate(&window->control);
+    tui_invalidate_frame(&window->control);     /* the flags only change the frame */
 
     if (window->dragging && (flags & TUI_WINDOW_FIXED)) {
         desktop = tui_find_desktop(&window->control);

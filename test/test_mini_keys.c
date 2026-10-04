@@ -514,6 +514,121 @@ static void test_pending_widgets(void)
     CHECK(pending_equals_full(&w.desktop));
 }
 
+/*
+ * Coming from a control in ANOTHER window the focus change alone marks both
+ * frames, and then the window is raised and the list opens: that must not make
+ * the desktop give up and repaint everything.
+ */
+static void test_pending_combo_from_another_window(void)
+{
+    Widgets w;
+    TuiWindow other;
+    TuiEdit other_edit;
+    char buffer[16];
+
+    widgets_build(&w);
+    buffer[0] = '\0';
+    tui_window_init(&other, 44, 2, 30, 6, "Other");
+    tui_edit_init(&other_edit, 1, 1, 20, buffer, 16);
+    tui_add(&w.desktop.control, &other.control);
+    tui_add(&other.control, &other_edit.control);
+    tui_draw(&w.desktop);
+
+    tui_desktop_set_focus(&w.desktop, &other_edit.control);
+    tui_draw_pending(&w.desktop);
+
+    /* What a click on the combo does: focus it, raise its window, open it. */
+    tui_desktop_set_focus(&w.desktop, &w.combo.control);
+    tui_bring_to_front(&w.window.control);
+    test_key(&w.desktop, ' ');
+    CHECK(w.combo.open);
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+
+    /* And closing it again, then back to the other window. */
+    test_key(&w.desktop, TUI_KEY_ESCAPE);
+    CHECK(!w.combo.open);
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+    tui_desktop_set_focus(&w.desktop, &other_edit.control);
+    tui_bring_to_front(&other.control);
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+}
+
+/* Far more changes than rectangles: they merge, nothing is lost, nothing gives up. */
+static void test_pending_many_changes_merge(void)
+{
+    TuiDesktop desktop;
+    TuiWindow window;
+    TuiLabel labels[24];
+    int i;
+
+    test_init_desktop(&desktop);
+    tui_window_init(&window, 2, 2, 70, 26, "Many");
+    tui_add(&desktop.control, &window.control);
+
+    for (i = 0; i < 24; ++i) {
+        tui_label_init(&labels[i], 1 + (i % 4) * 16, 1 + i, "old text");
+        tui_add(&window.control, &labels[i].control);
+    }
+    tui_draw(&desktop);
+
+    for (i = 0; i < 24; ++i)
+        tui_label_set_text(&labels[i], (i % 2) ? "x" : "a longer text");
+
+    CHECK(!desktop.dirty_all);
+    CHECK(desktop.dirty_count <= TUI_DIRTY_MAX);
+    CHECK(pending_equals_full(&desktop));
+}
+
+/* Only the frame of a window changes with its flags: four thin strips, no more. */
+static void test_pending_frame_only(void)
+{
+    Scene s;
+    int i;
+    int cells;
+    int x1, y1, x2, y2;
+
+    scene_build(&s);
+    tui_draw(&s.desktop);
+
+    tui_window_add_flags(&s.left, TUI_WINDOW_ACTIVE_DOUBLE);
+    CHECK(!s.desktop.dirty_all);
+    CHECK(s.desktop.dirty_count == 4);
+
+    /* The ring is far smaller than the window it surrounds. */
+    cells = 0;
+    for (i = 0; i < s.desktop.dirty_count; ++i)
+        cells += (s.desktop.dirty[i][2] - s.desktop.dirty[i][0]) *
+                 (s.desktop.dirty[i][3] - s.desktop.dirty[i][1]);
+    tui_control_rect(&s.left.control, &x1, &y1, &x2, &y2);
+    CHECK(cells == 2 * (x2 - x1) + 2 * (y2 - y1 - 2));
+    CHECK(cells < (x2 - x1) * (y2 - y1));
+
+    CHECK(pending_equals_full(&s.desktop));
+}
+
+/* A rectangle that covers earlier ones takes their place. */
+static void test_pending_big_rectangle_absorbs_small_ones(void)
+{
+    Scene s;
+    int i;
+
+    scene_build(&s);
+    tui_draw(&s.desktop);
+
+    /* Five cells on the diagonal of a 24x6 window, all inside it. */
+    for (i = 0; i < 5; ++i)
+        tui_invalidate_rect(&s.left.control, 1 + i, 1 + i, 1, 1);
+    CHECK(s.desktop.dirty_count == 5);
+
+    tui_invalidate(&s.left.control);
+    CHECK(s.desktop.dirty_count == 1);
+    CHECK(!s.desktop.dirty_all);
+    CHECK(pending_equals_full(&s.desktop));
+}
+
 static void test_unhandled_key_draws_nothing(void)
 {
     Scene s;
@@ -569,6 +684,13 @@ void test_mini_keys_suite(void)
     test_run_case("pending redraw: focus and tree changes",
                   test_pending_focus_and_tree_changes);
     test_run_case("pending redraw: widgets", test_pending_widgets);
+    test_run_case("pending redraw: many changes merge",
+                  test_pending_many_changes_merge);
+    test_run_case("pending redraw: frame only", test_pending_frame_only);
+    test_run_case("pending redraw: a big rectangle absorbs small ones",
+                  test_pending_big_rectangle_absorbs_small_ones);
+    test_run_case("pending redraw: combo opened from another window",
+                  test_pending_combo_from_another_window);
     test_run_case("pending redraw: unhandled key draws nothing",
                   test_unhandled_key_draws_nothing);
     test_run_case("pending redraw: unreported event repaints all",

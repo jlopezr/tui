@@ -194,8 +194,9 @@ struct TuiControl {
 
 
 /*
- * Rectangles remembered between two draws. More than this, and the next
- * draw is the whole screen.
+ * Rectangles remembered between two draws. With more, the new one is merged into
+ * the rectangle that grows the least, so a burst of changes repaints a bit more
+ * than needed instead of the whole screen.
  */
 #define TUI_DIRTY_MAX 12
 
@@ -432,6 +433,7 @@ TuiControl *tui_window_of(TuiControl *control);
  */
 void tui_invalidate(TuiControl *control);
 void tui_invalidate_rect(TuiControl *control, int x, int y, int width, int height);
+void tui_invalidate_frame(TuiControl *control);   /* just the outer ring of cells */
 void tui_invalidate_all(TuiDesktop *desktop);
 void tui_event_done(TuiControl *control);
 
