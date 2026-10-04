@@ -136,7 +136,8 @@ void tui_button_init(TuiButton *button,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP);
+                     TUI_TABSTOP |
+                     TUI_LOCAL);
 
     button->text = text;
     button->command = command;

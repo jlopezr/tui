@@ -742,6 +742,17 @@ TuiControl *tui_window_of(TuiControl *control)
     return 0;
 }
 
+TuiControl *tui_redraw_owner(TuiControl *control)
+{
+    for (; control != 0; control = control->parent) {
+        if ((control->flags & TUI_LOCAL) != 0 ||
+            control->cls == &tui_window_class)
+            return control;
+    }
+
+    return 0;
+}
+
 void tui_control_rect(TuiControl *control,
                       int *x1, int *y1, int *x2, int *y2)
 {
@@ -956,8 +967,10 @@ static int tui_dispatch_mouse(TuiDesktop *desktop,
     while (target != 0) {
         if (target->cls != 0 &&
             target->cls->event != 0 &&
-            target->cls->event(target, event))
+            target->cls->event(target, event)) {
+            desktop->last_handler = target;
             return 1;
+        }
 
         target = target->parent;
     }

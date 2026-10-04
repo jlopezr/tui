@@ -150,7 +150,8 @@ void tui_listbox_init(TuiListBox *list,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP);
+                     TUI_TABSTOP |
+                     TUI_LOCAL);
 
     tui_scrollbar_init(&list->scrollbar, 0, 0, 1,
                        TUI_VERTICAL, TUI_CMD_NONE);

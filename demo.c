@@ -757,17 +757,125 @@ static TuiStatusItem status_items[] = {
  * change very little, so the loop asks for the least that is still correct.
  */
 #define REDRAW_NONE     0
-#define REDRAW_WINDOW   1
+#define REDRAW_AREAS    1
 #define REDRAW_FULL     2
 
-/*
- * Redraw one area and the status bar, which every key event may update. The
- * area is the control that took the key when it is TUI_LOCAL, otherwise its
- * whole window. Anything stacked on top of the area is drawn again by the region
- * walk, so overlap is not a concern.
- */
-static void demo_draw_window(App *app, TuiControl *window)
+#define MAX_AREAS       4
+
+/* Controls whose rectangle has to be drawn again (see tui_redraw_owner). */
+typedef struct {
+    TuiControl *area[MAX_AREAS];
+    int count;
+} Areas;
+
+/* Returns 0 when there is nothing sensible to add: then draw everything. */
+static int areas_add(Areas *areas, TuiControl *control)
 {
+    int i;
+
+    if (control == 0)
+        return 0;
+
+    for (i = 0; i < areas->count; ++i) {
+        if (areas->area[i] == control)
+            return 1;
+    }
+
+    if (areas->count >= MAX_AREAS)
+        return 0;
+
+    areas->area[areas->count] = control;
+    ++areas->count;
+
+    return 1;
+}
+
+/* A command that only changes the status bar and the control that sent it. */
+static int command_is_light(int command)
+{
+    int i;
+
+    if (command == CMD_QUIT ||
+        command == CMD_DEMO_CONTROLS ||
+        command == CMD_DEMO_LAYOUT ||
+        command == CMD_DEMO_EDITOR)
+        return 0;
+
+    if (command == CMD_EDITOR_STATE)
+        return 1;
+
+    for (i = 0; i < COMMAND_COUNT; ++i) {
+        if (command_table[i].command == command)
+            return 1;
+    }
+
+    return 0;
+}
+
+/*
+ * Work out what a handled event changed. Returns 0 when the answer is "could be
+ * anything", and the caller repaints the whole screen.
+ *
+ * Cheap cases: the control that took the event, plus the control that lost the
+ * focus and the one that got it (both draw their focus), plus the status bar,
+ * which the caller always adds. Anything stacked on top of those rectangles is
+ * drawn again by the region walk, so overlap is not a concern.
+ */
+static int demo_plan(App *app, const TuiEvent *event, int was_command_key,
+                     TuiControl *old_focus, TuiControl *old_top,
+                     Areas *areas)
+{
+    TuiControl *new_focus;
+    TuiControl *handler;
+
+    areas->count = 0;
+
+    /* A popup came or went: it covers cells outside any control we know. */
+    if (app->desktop.control.last != old_top)
+        return 0;
+
+    handler = app->desktop.last_handler;
+
+    if (event->type == TUI_EV_COMMAND &&
+        (handler == 0 || !command_is_light(event->command)))
+        return 0;
+
+    if (handler != 0) {
+        if (!areas_add(areas, tui_redraw_owner(handler)))
+            return 0;
+    } else if (!was_command_key) {
+        /* Shortcuts and menus: only TAB is known to be cheap. */
+        return 0;
+    }
+
+    new_focus = tui_desktop_get_focus(&app->desktop);
+
+    if (new_focus != old_focus) {
+        /* The active window draws its frame differently. */
+        if (tui_window_of(old_focus) != tui_window_of(new_focus)) {
+            if (old_focus != 0 &&
+                !areas_add(areas, tui_window_of(old_focus)))
+                return 0;
+            if (new_focus != 0 &&
+                !areas_add(areas, tui_window_of(new_focus)))
+                return 0;
+        }
+
+        if (old_focus != 0 &&
+            !areas_add(areas, tui_redraw_owner(old_focus)))
+            return 0;
+        if (new_focus != 0 &&
+            !areas_add(areas, tui_redraw_owner(new_focus)))
+            return 0;
+    }
+
+    return 1;
+}
+
+/* Redraw the areas and the status bar, which most events update. */
+static void demo_draw_areas(App *app, const Areas *areas)
+{
+    int i;
     int x1;
     int y1;
     int x2;
@@ -775,8 +883,10 @@ static void demo_draw_window(App *app, TuiControl *window)
 
     tui_draw_begin(&app->desktop);
 
-    tui_control_rect(window, &x1, &y1, &x2, &y2);
-    tui_draw_region(&app->desktop, x1, y1, x2, y2);
+    for (i = 0; i < areas->count; ++i) {
+        tui_control_rect(areas->area[i], &x1, &y1, &x2, &y2);
+        tui_draw_region(&app->desktop, x1, y1, x2, y2);
+    }
 
     tui_control_rect(&app->status_bar.control, &x1, &y1, &x2, &y2);
     tui_draw_region(&app->desktop, x1, y1, x2, y2);
@@ -788,10 +898,13 @@ int main(void)
 {
     /* Static: ~15 KB, bigger than the 8 KB stack of the MiniCPU start-up code. */
     static App app;
+    static Areas areas;
     TuiEvent event;
     int redraw;
     int handled;
-    TuiControl *redraw_window;
+    int was_tab;
+    TuiControl *old_focus;
+    TuiControl *old_top;
 
     if (!tui_init())
         return 1;
@@ -814,13 +927,12 @@ int main(void)
     app.running = 1;
 
     redraw = REDRAW_FULL;
-    redraw_window = 0;
 
     while (app.running) {
         if (redraw == REDRAW_FULL)
             tui_draw(&app.desktop);
-        else if (redraw == REDRAW_WINDOW)
-            demo_draw_window(&app, redraw_window);
+        else if (redraw == REDRAW_AREAS)
+            demo_draw_areas(&app, &areas);
         tui_read_event(&event);
         redraw = REDRAW_FULL;
         if (event.type == TUI_EV_KEY &&
@@ -829,39 +941,32 @@ int main(void)
             app.running = 0;
         } else {
             note_control_event(&app, &event);
+
+            old_focus = tui_desktop_get_focus(&app.desktop);
+            old_top = app.desktop.control.last;
+            was_tab = event.type == TUI_EV_KEY && event.key == TUI_KEY_TAB &&
+                      app.desktop.capture == 0;
+
             handled = tui_dispatch(&app.desktop, &event);
 
-            if (!handled &&
-                event.type == TUI_EV_MOUSE &&
-                event.mouse_action == TUI_MOUSE_MOVE &&
-                app.desktop.capture == 0) {
-                /* Nothing reacted: the pointer is the console's business. */
-                redraw = REDRAW_NONE;
-            } else if (!handled && event.type == TUI_EV_KEY) {
-                /* A key nobody wants changes nothing on screen. */
-                redraw = REDRAW_NONE;
-            } else if (handled &&
-                       event.type == TUI_EV_KEY &&
-                       app.desktop.last_handler != 0) {
+            if (!handled) {
                 /*
-                 * An ordinary control took the key (typing, arrows in a
-                 * list...): only its window can have changed. Focus
-                 * changes, menus and shortcuts do not leave a handler, so
-                 * they still get a full redraw.
+                 * Nothing reacted. A key or a mouse move over nothing changes
+                 * nothing on screen (the pointer is the console's business).
                  */
-                if ((app.desktop.last_handler->flags & TUI_LOCAL) != 0)
-                    redraw_window = app.desktop.last_handler;
-                else
-                    redraw_window = tui_window_of(app.desktop.last_handler);
-                if (redraw_window != 0)
-                    redraw = REDRAW_WINDOW;
+                if (event.type == TUI_EV_KEY ||
+                    (event.type == TUI_EV_MOUSE &&
+                     event.mouse_action == TUI_MOUSE_MOVE &&
+                     app.desktop.capture == 0))
+                    redraw = REDRAW_NONE;
+            } else if (demo_plan(&app, &event, was_tab, old_focus, old_top,
+                                 &areas)) {
+                redraw = REDRAW_AREAS;
             }
         }
 
-        if (event.type == TUI_EV_COMMAND) {
+        if (event.type == TUI_EV_COMMAND)
             dispatch_command(&app, event.command);
-            redraw = REDRAW_FULL;      /* a command can change anything */
-        }
     }
 
     tui_shutdown();

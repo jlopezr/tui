@@ -417,6 +417,23 @@ static void test_control_redraw_matches_full_with_overlap(void)
     CHECK(screens_equal(&after_full, &after_partial));
 }
 
+static void test_redraw_owner(void)
+{
+    Scene s;
+
+    scene_build(&s);
+
+    /* A TUI_LOCAL control is its own owner; a bare label falls back to its window. */
+    CHECK(tui_redraw_owner(&s.edit_left.control) == &s.edit_left.control);
+    CHECK(tui_redraw_owner(&s.left.control) == &s.left.control);
+    CHECK(tui_redraw_owner(&s.label.control) == 0);
+
+    tui_remove(&s.label.control);
+    tui_add(&s.left.control, &s.label.control);
+    CHECK(tui_redraw_owner(&s.label.control) == &s.left.control);
+    CHECK(tui_redraw_owner(&s.desktop.control) == 0);
+}
+
 static void test_last_handler_is_cleared(void)
 {
     Scene s;
@@ -441,6 +458,7 @@ void test_mini_keys_suite(void)
                   test_partial_redraw_matches_full);
     test_run_case("control redraw equals full redraw under overlap",
                   test_control_redraw_matches_full_with_overlap);
+    test_run_case("redraw owner", test_redraw_owner);
     test_run_case("dispatch clears last handler", test_last_handler_is_cleared);
     test_run_case("edit accepts 8-bit console text",
                   test_edit_accepts_what_the_console_prints);

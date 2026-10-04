@@ -275,14 +275,18 @@ la demo iba a ~3 eventos por segundo. Ahora:
 
 - un **movimiento de ratón** que nadie gestiona no redibuja nada (1 ms);
 - una **tecla** que nadie gestiona tampoco redibuja nada;
-- una **tecla** gestionada por un control redibuja solo su rectángulo y la barra
-  de estado (`tui_draw_begin` / `tui_draw_region` / `tui_draw_end`; el núcleo se
-  salta los controles que no tocan la región, y lo que haya encima se vuelve a
-  pintar, así que el solape no importa). Eso vale para los controles marcados
-  `TUI_LOCAL` (Edit, TextArea, Editor: lo que hacen se ve dentro de su
-  rectángulo). Para los demás se redibuja su ventana. Unos 17 ms en la placa,
-  incluido el viaje por el puerto serie;
-- lo demás —foco, menús, atajos, comandos, clics— sigue siendo redibujado completo.
+- una **tecla o un clic** gestionado por un control redibuja solo su rectángulo
+  y la barra de estado (`tui_draw_begin` / `tui_draw_region` / `tui_draw_end`;
+  el núcleo se salta los controles que no tocan la región, y lo que haya encima
+  se vuelve a pintar, así que el solape no importa). Eso vale para los controles
+  marcados `TUI_LOCAL` (Edit, TextArea, Editor, ListBox, Button, CheckBox: lo que
+  hacen se ve dentro de su rectángulo); `tui_redraw_owner()` da el control a
+  repintar y, si no hay ninguno, su ventana. Unos 17 ms con un cuadro de texto;
+- cambiar el **foco** (TAB, clic) repinta el control que lo pierde y el que lo
+  gana, y las dos ventanas si son distintas;
+- un **comando** que solo cambia la barra de estado no obliga a repintar todo;
+- lo demás —menús, atajos, abrir o cerrar la lista de un combo (añade o quita una
+  ventana), cambiar de demo— sigue siendo redibujado completo, unos 260 ms.
 
 `tui_dispatch` deja en `desktop->last_handler` el control que gestionó la tecla
 (0 si fue un atajo global, TAB o el ratón); `tui_window_of()` da su ventana.

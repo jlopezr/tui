@@ -99,7 +99,8 @@ void tui_checkbox_init(TuiCheckBox *checkbox,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP);
+                     TUI_TABSTOP |
+                     TUI_LOCAL);
 
     checkbox->text = text;
     checkbox->checked = 0;

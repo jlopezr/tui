@@ -222,8 +222,8 @@ struct TuiDesktop {
     int cursor_y;
 
     /*
-     * Control that handled the last key event (0 if none, or if it was
-     * handled by a global control, TAB navigation or the mouse). Lets an
+     * Control that handled the last key or mouse event (0 if none, or if it
+     * was handled by a global control or TAB navigation). Lets an
      * application redraw only the part of the screen that can have changed.
      */
     TuiControl *last_handler;
@@ -408,6 +408,12 @@ void tui_draw_end(TuiDesktop *desktop);
 
 /* Nearest window containing 'control' (or 'control' itself), or 0. */
 TuiControl *tui_window_of(TuiControl *control);
+
+/*
+ * What to repaint after 'control' reacted: the nearest ancestor (or itself)
+ * marked TUI_LOCAL, else its window, else 0 (repaint everything).
+ */
+TuiControl *tui_redraw_owner(TuiControl *control);
 
 /* Screen rectangle of a control: x1,y1 inclusive, x2,y2 exclusive. */
 void tui_control_rect(TuiControl *control,
