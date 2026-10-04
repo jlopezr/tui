@@ -497,7 +497,7 @@ static int editor_edit_key(TuiEditor *editor, int key, int *changed)
     editing = key == TUI_KEY_ENTER ||
               key == TUI_KEY_BACKSPACE ||
               key == TUI_KEY_DELETE ||
-              (key >= 32 && key <= 126);
+              tui_console_printable(key);
 
     if (!editing || editor->readonly)
         return editing;

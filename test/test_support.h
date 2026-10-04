@@ -15,6 +15,7 @@ extern int test_cell_attrs[TEST_HEIGHT][TEST_WIDTH];
 extern int test_cursor_x;
 extern int test_cursor_y;
 extern int test_cursor_visible;
+extern int test_console_8bit;
 
 void test_check(int condition,
                 const char *expression,
@@ -50,5 +51,6 @@ void test_scrollbar_suite(void);
 void test_textarea_suite(void);
 void test_textmodel_suite(void);
 void test_editor_suite(void);
+void test_mini_keys_suite(void);
 
 #endif

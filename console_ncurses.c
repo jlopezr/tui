@@ -473,6 +473,11 @@ int tui_console_key(void)
     }
 }
 
+int tui_console_printable(int key)
+{
+    return TUI_ASCII_PRINTABLE(key);
+}
+
 void tui_console_cursor(int x, int y, int visible)
 {
     if (visible) {

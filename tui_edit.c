@@ -81,7 +81,7 @@ static void edit_draw(TuiControl *control,
 
         tui_putc(draw,
                  x, 0,
-                 edit->text[index],
+                 (unsigned char)edit->text[index],
                  attr);
     }
 
@@ -262,10 +262,9 @@ static int edit_event(TuiControl *control,
     }
 
     /*
-     * Printable ASCII character.
+     * Printable character, as the console defines it.
      */
-    if (event->key >= 32 &&
-        event->key <= 126) {
+    if (tui_console_printable(event->key)) {
 
         edit_insert_char(edit, event->key);
         edit_ensure_cursor_visible(edit);

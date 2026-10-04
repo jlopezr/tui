@@ -81,6 +81,15 @@ void tui_console_mouse(int *x, int *y, int *action, int *buttons)
     *buttons = 0;
 }
 
+int test_console_8bit = 0;
+
+int tui_console_printable(int key)
+{
+    if (TUI_ASCII_PRINTABLE(key))
+        return 1;
+    return test_console_8bit && key >= 128 && key <= 255;
+}
+
 void tui_console_cursor(int x, int y, int visible)
 {
     test_cursor_x = x;

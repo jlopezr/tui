@@ -13,7 +13,8 @@ TEST_SRC = test/test_main.c test/test_support.c \
 	test/test_label.c test/test_core.c test/test_checkbox.c \
 	test/test_radiobutton.c test/test_combobox.c \
 	test/test_scrollbar.c test/test_textarea.c \
-	test/test_textmodel.c test/test_editor.c
+	test/test_textmodel.c test/test_editor.c \
+	test/test_mini_keys.c
 TUI_SRC = tui.c tui_window.c tui_button.c tui_label.c \
 	tui_edit.c tui_listbox.c tui_menu.c tui_statusbar.c \
 	tui_checkbox.c tui_radiobutton.c tui_combobox.c tui_scrollbar.c \

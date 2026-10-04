@@ -457,6 +457,11 @@ void tui_console_mouse(int *x, int *y, int *action, int *buttons)
     *buttons = tui_mouse_buttons;
 }
 
+int tui_console_printable(int key)
+{
+    return TUI_ASCII_PRINTABLE(key);
+}
+
 void tui_console_cursor(int x, int y, int visible)
 {
     CONSOLE_CURSOR_INFO cursor;

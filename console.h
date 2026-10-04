@@ -88,8 +88,20 @@
 #define TUI_CH_CHECK           0x117
 #define TUI_CH_BULLET          0x118
 
+/* ASCII imprimible: lo que aceptan los controles de texto por defecto. */
+#define TUI_ASCII_PRINTABLE(key) ((key) >= 32 && (key) <= 126)
+
 int  tui_console_init(void);
 void tui_console_shutdown(void);
+
+/*
+ * Whether a key code returned by tui_console_key() is a character that text
+ * controls may insert. It is a property of the console, not of the library:
+ * the PC backends return bytes or UTF-8 pieces above 127 that the cell writer
+ * cannot draw, so they accept only ASCII; the MiniCPU console draws CP437 and
+ * accepts 128..255 as well (n with tilde, accented vowels...).
+ */
+int  tui_console_printable(int key);
 
 int  tui_console_width(void);
 int  tui_console_height(void);

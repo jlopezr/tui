@@ -477,7 +477,7 @@ static int textarea_edit_key(TuiTextArea *area, int key)
     editing = key == TUI_KEY_ENTER ||
               key == TUI_KEY_BACKSPACE ||
               key == TUI_KEY_DELETE ||
-              (key >= 32 && key <= 126);
+              tui_console_printable(key);
 
     if (!editing || area->readonly)
         return editing;

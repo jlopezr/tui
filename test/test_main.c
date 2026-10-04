@@ -22,6 +22,7 @@ int main(void)
     test_textarea_suite();
     test_textmodel_suite();
     test_editor_suite();
+    test_mini_keys_suite();
 
     printf("%d checks, %d failures\n",
            test_checks,
