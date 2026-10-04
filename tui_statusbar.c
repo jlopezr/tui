@@ -5,7 +5,9 @@ static int statusbar_event(TuiControl *control, TuiEvent *event);
 
 static const TuiClass statusbar_class = {
     statusbar_draw,
-    statusbar_event
+    statusbar_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 /*

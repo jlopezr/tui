@@ -5,7 +5,9 @@ static int editor_event(TuiControl *control, TuiEvent *event);
 
 static const TuiClass editor_class = {
     editor_draw,
-    editor_event
+    editor_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 /*
@@ -322,7 +324,8 @@ static void editor_scroll_detach(TuiControl *control)
 static const TuiClass editor_scroll_class = {
     editor_scroll_draw,
     editor_scroll_event,
-    editor_scroll_detach
+    editor_scroll_detach,
+    TUI_CLASS_OPAQUE
 };
 
 static void editor_init_scrollbar(TuiEditor *editor,

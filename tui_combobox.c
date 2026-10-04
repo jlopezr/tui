@@ -9,7 +9,8 @@ static void combobox_detach(TuiControl *control);
 static const TuiClass combobox_class = {
     combobox_draw,
     combobox_event,
-    combobox_detach
+    combobox_detach,
+    TUI_CLASS_OPAQUE
 };
 
 /*

@@ -5,7 +5,9 @@ static int textarea_event(TuiControl *control, TuiEvent *event);
 
 static const TuiClass textarea_class = {
     textarea_draw,
-    textarea_event
+    textarea_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 /*
@@ -309,7 +311,8 @@ static void textarea_scroll_detach(TuiControl *control)
 static const TuiClass textarea_scroll_class = {
     textarea_scroll_draw,
     textarea_scroll_event,
-    textarea_scroll_detach
+    textarea_scroll_detach,
+    TUI_CLASS_OPAQUE
 };
 
 static void textarea_init_scrollbar(TuiTextArea *area,

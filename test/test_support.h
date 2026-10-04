@@ -26,6 +26,9 @@ void test_run_case(const char *name, TestFn function);
 void test_reset_screen(void);
 void test_init_desktop(TuiDesktop *desktop);
 int test_key(TuiDesktop *desktop, int key);
+
+/* Cells the code under test has written to the console so far. */
+extern int test_cells_written;
 int test_key_event(TuiDesktop *desktop, int key, TuiEvent *event);
 int test_mouse_action(TuiDesktop *desktop,
                       int x,

@@ -5,7 +5,9 @@ static int edit_event(TuiControl *control, TuiEvent *event);
 
 static const TuiClass edit_class = {
     edit_draw,
-    edit_event
+    edit_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 /*

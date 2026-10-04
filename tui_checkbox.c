@@ -5,7 +5,9 @@ static int checkbox_event(TuiControl *control, TuiEvent *event);
 
 static const TuiClass checkbox_class = {
     checkbox_draw,
-    checkbox_event
+    checkbox_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 static int checkbox_attr(TuiControl *control)

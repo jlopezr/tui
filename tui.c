@@ -398,7 +398,9 @@ static int desktop_event(TuiControl *control, TuiEvent *event);
 
 static const TuiClass desktop_class = {
     desktop_draw,
-    desktop_event
+    desktop_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 /*
@@ -451,6 +453,8 @@ void tui_desktop_init(TuiDesktop *desktop)
     desktop->command_context = 0;
     desktop->command_status = 0;
     desktop->partial_draw = 0;
+    desktop->draw_cover = 0;
+    desktop->draw_started = 0;
 }
 
 void tui_desktop_set_focus(TuiDesktop *desktop,
@@ -685,34 +689,110 @@ TuiControl *tui_hit_test(TuiControl *root, int x, int y)
     return tui_hit_control(root, &draw, x, y);
 }
 
+/*
+ * The frontmost opaque control that covers the whole region, or 0. 'draw'
+ * describes 'control' exactly as in tui_draw_tree(); 'region' only carries the
+ * rectangle. A child is looked at only if the area its parent lets it draw in
+ * (the inside of a window) holds the region, and if its own rectangle does: then
+ * all of the region is painted by it, and by what is drawn after it.
+ */
+static TuiControl *tui_find_cover(TuiControl *control,
+                                  const TuiDraw *draw,
+                                  const TuiDraw *region)
+{
+    TuiControl *child;
+    TuiControl *found;
+    TuiDraw children;
+    TuiDraw cd;
+
+    tui_layout_children(control);
+    tui_get_child_context(control, draw, &children);
+
+    if (children.x1 <= region->x1 && children.y1 <= region->y1 &&
+        children.x2 >= region->x2 && children.y2 >= region->y2) {
+
+        for (child = control->last; child != 0; child = child->prev) {
+            if ((child->flags & TUI_VISIBLE) == 0)
+                continue;
+
+            cd = children;
+            cd.ox += child->x;
+            cd.oy += child->y;
+
+            if (cd.ox > region->x1 || cd.oy > region->y1 ||
+                cd.ox + child->width < region->x2 ||
+                cd.oy + child->height < region->y2)
+                continue;
+
+            found = tui_find_cover(child, &cd, region);
+
+            if (found != 0)
+                return found;
+        }
+    }
+
+    if (control->cls != 0 && (control->cls->flags & TUI_CLASS_OPAQUE))
+        return control;
+
+    return 0;
+}
+
+static int tui_is_ancestor(TuiControl *ancestor, TuiControl *control)
+{
+    for (control = control->parent; control != 0; control = control->parent) {
+        if (control == ancestor)
+            return 1;
+    }
+
+    return 0;
+}
+
 static void tui_draw_tree(TuiControl *control,
                           TuiDraw *draw)
 {
     TuiControl *child;
     TuiDraw children;
     TuiDraw cd;
+    int own;
 
     if ((control->flags & TUI_VISIBLE) == 0)
         return;
-    
+
+    own = 1;
+
     /*
      * Partial redraw: a control (and so its children, which are clipped to
      * it) that does not touch the region draws nothing, so skip its whole
      * subtree. Costs four comparisons instead of the draw.
      */
-    if (draw->desktop != 0 && draw->desktop->partial_draw &&
-        (draw->ox >= draw->x2 ||
-         draw->ox + control->width <= draw->x1 ||
-         draw->oy >= draw->y2 ||
-         draw->oy + control->height <= draw->y1))
-        return;
+    if (draw->desktop != 0 && draw->desktop->partial_draw) {
+        if (draw->ox >= draw->x2 ||
+            draw->ox + control->width <= draw->x1 ||
+            draw->oy >= draw->y2 ||
+            draw->oy + control->height <= draw->y1)
+            return;
+
+        /*
+         * Before the control that covers the region (see tui_draw_region) what
+         * is drawn would be covered by it: whole subtrees that come earlier are
+         * skipped, and the ancestors only lay out and pass on to their children.
+         */
+        if (draw->desktop->draw_cover != 0 && !draw->desktop->draw_started) {
+            if (control == draw->desktop->draw_cover)
+                draw->desktop->draw_started = 1;
+            else if (tui_is_ancestor(control, draw->desktop->draw_cover))
+                own = 0;
+            else
+                return;
+        }
+    }
 
     /*
      * Calculate child geometry before drawing.
      */
     tui_layout_children(control);
 
-    if (control->cls != 0 &&
+    if (own && control->cls != 0 &&
         control->cls->draw != 0) {
         control->cls->draw(control, draw);
     }
@@ -773,10 +853,22 @@ void tui_draw_region(TuiDesktop *desktop, int x1, int y1, int x2, int y2)
                             draw.x2 < desktop->control.width ||
                             draw.y2 < desktop->control.height;
 
+    /* Start from the frontmost opaque control that covers it, if there is one. */
+    desktop->draw_cover = 0;
+    desktop->draw_started = 0;
+
+    if (desktop->partial_draw && draw.x1 < draw.x2 && draw.y1 < draw.y2) {
+        desktop->draw_cover = tui_find_cover(&desktop->control, &draw, &draw);
+
+        if (desktop->draw_cover == &desktop->control)
+            desktop->draw_cover = 0;
+    }
+
     tui_draw_tree(&desktop->control,
                   &draw);
 
     desktop->partial_draw = 0;
+    desktop->draw_cover = 0;
 }
 
 void tui_draw_end(TuiDesktop *desktop)

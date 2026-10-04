@@ -7,7 +7,8 @@ static void window_detach(TuiControl *control);
 const TuiClass tui_window_class = {
     window_draw,
     window_event,
-    window_detach
+    window_detach,
+    TUI_CLASS_OPAQUE
 };
 
 /* A window that leaves the tree is not being dragged any more. */

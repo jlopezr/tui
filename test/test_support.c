@@ -58,11 +58,15 @@ int tui_console_height(void)
     return TEST_HEIGHT;
 }
 
+int test_cells_written;
+
 void tui_console_cell(int x, int y, int ch, int attr)
 {
     if (x < 0 || x >= TEST_WIDTH ||
         y < 0 || y >= TEST_HEIGHT)
         return;
+
+    ++test_cells_written;
 
     test_cell_chars[y][x] = ch;
     test_cell_attrs[y][x] = attr;

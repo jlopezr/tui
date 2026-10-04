@@ -164,7 +164,22 @@ struct TuiClass {
      * members above leaves it 0.
      */
     void (*detach)(TuiControl *control);
+
+    /*
+     * TUI_CLASS_* properties of the class. 0 is the safe default, and what a class
+     * table that stops at the members above gets.
+     */
+    int flags;
 };
+
+/*
+ * draw() writes every cell of the control's rectangle (with spaces if it has
+ * nothing else), either by itself or with the children it always has, such as the
+ * scroll bars of a list. When a partial repaint falls entirely inside such a
+ * control, what is drawn behind it would be covered anyway, so it is not drawn. A
+ * class that leaves any cell untouched (a label, a panel) must not have it.
+ */
+#define TUI_CLASS_OPAQUE 1
 
 
 /*
@@ -295,6 +310,14 @@ struct TuiDesktop {
 
     /* Set while tui_draw_region() works: controls outside it are skipped. */
     int partial_draw;
+
+    /*
+     * The control tui_draw_region() starts drawing from: the frontmost opaque one
+     * that covers the whole region (0: from the top). Everything drawn before it
+     * would be covered, so it is skipped until draw_started says it was reached.
+     */
+    TuiControl *draw_cover;
+    int draw_started;
 };
 
 /*

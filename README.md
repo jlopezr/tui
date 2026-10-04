@@ -303,19 +303,30 @@ tui_draw_pending(&desktop);       /* en vez de tui_draw() */
   clic sobre un botón, un movimiento sobre una lista desplegada).
 - **Un evento gestionado sin ninguna invalidación se toma como «puede haber
   cambiado cualquier cosa»** y `tui_dispatch` invalida la pantalla entera. Así un
-  control que no sabe de esto (o uno nuevo) sigue siendo correcto, solo más lento:
-  hoy lo son los menús.
+  control que no sabe de esto (o uno nuevo) sigue siendo correcto, solo más lento.
+  La barra de menús y el popup sí invalidan: la fila de la barra, y solo el texto de
+  las dos filas del popup que cambian.
 - Un evento que **nadie gestiona** no invalida nada: un movimiento de ratón sobre
   el fondo o una tecla sin dueño cuestan 0.
 - Lo que haya **encima** de un rectángulo sucio se vuelve a pintar con él
   (`tui_draw_begin` / `tui_draw_region` / `tui_draw_end` recorren el árbol en
   orden y se saltan lo que no toca la región), así que el solape no importa.
+- **Una clase opaca** (`TUI_CLASS_OPAQUE` en `TuiClass.flags`) pinta todas las
+  celdas de su rectángulo, ella o con los hijos que siempre tiene (las barras de una
+  lista). Si la región sucia cae entera dentro de un control opaco, `tui_draw_region`
+  empieza a pintar desde el más cercano al frente que la cubre: no dibuja el fondo
+  del escritorio y de la ventana que él iba a tapar, ni lo que va antes en el
+  árbol, y sigue dibujando lo que va después. La marca es opt-in: una clase que no
+  la declara (una etiqueta, que solo escribe sus letras y deja el resto al fondo de
+  la ventana; un panel, que no dibuja) se comporta como siempre. Declararla sin que
+  sea verdad deja restos en pantalla; los tests que comparan el repintado parcial
+  con el completo lo detectan.
 
-Medido en la placa (ms, con ida y vuelta por el puerto serie): letra en un
-cuadro de texto ~17; espacio en checkbox, radio o botón ~10–30; flecha en una
-lista 10–48; TAB entre controles 18–108 (repinta los dos controles y los marcos);
-abrir o cerrar la lista de un combo ~55–70; ratón sobre una lista desplegada 2–4;
-redibujado completo ~256. `tui_draw()` no cambia. `tui_fill` y `tui_text` recortan
+Medido en la placa (ms, con ida y vuelta por el puerto serie): espacio en
+checkbox, radio o botón ~8–16; flecha en una lista 8–22; TAB entre controles
+12–52 (repinta los dos controles y los marcos); abrir la lista de un combo ~20–30
+y cerrarla ~33; una tecla en un menú 10–60; clic en la lista de otra ventana ~44;
+ratón sobre una lista desplegada 2–4; redibujado completo ~256. `tui_draw()` no cambia. `tui_fill` y `tui_text` recortan
 el rectángulo una vez en vez de celda a celda.
 
 #### Tabla de comandos

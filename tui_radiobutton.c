@@ -5,7 +5,9 @@ static int radiobutton_event(TuiControl *control, TuiEvent *event);
 
 static const TuiClass radiobutton_class = {
     radiobutton_draw,
-    radiobutton_event
+    radiobutton_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 static int radiobutton_attr(TuiControl *control)

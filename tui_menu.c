@@ -7,12 +7,16 @@ static int menubar_event(TuiControl *control, TuiEvent *event);
 
 static const TuiClass popup_class = {
     popup_draw,
-    popup_event
+    popup_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 static const TuiClass menubar_class = {
     menubar_draw,
-    menubar_event
+    menubar_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 /*

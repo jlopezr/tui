@@ -463,6 +463,82 @@ static void widgets_build(Widgets *w)
     tui_add(&w->window.control, &w->button.control);
 }
 
+/* Cells written by the partial repaint that follows one event. */
+static int cells_for_key(Widgets *w, TuiControl *focus, int key)
+{
+    int before;
+
+    tui_desktop_set_focus(&w->desktop, focus);
+    tui_draw_pending(&w->desktop);
+    test_key(&w->desktop, key);
+    before = test_cells_written;
+    tui_draw_pending(&w->desktop);
+
+    return test_cells_written - before;
+}
+
+/*
+ * A control that paints its whole rectangle is drawn without what is behind it
+ * (the window and the desktop), so the repaint writes about the cells of the
+ * control itself: a 12-cell check box takes 20 (its fill, then its glyphs and
+ * text), where it took 44 with the desktop and the window drawn first.
+ */
+static void test_pending_cost(void)
+{
+    Widgets w;
+
+    widgets_build(&w);
+    tui_draw(&w.desktop);
+
+    CHECK(cells_for_key(&w, &w.check.control, ' ') <= 24);
+    CHECK(cells_for_key(&w, &w.radio_b.control, ' ') <= 24);
+    CHECK(cells_for_key(&w, &w.list.control, TUI_KEY_DOWN) <= 110);
+}
+
+/*
+ * Starting from the opaque control that covers the region must not lose what is
+ * drawn after it: a label over an edit, and a window over part of both.
+ */
+static void test_pending_from_the_cover(void)
+{
+    TuiDesktop desktop;
+    TuiWindow back;
+    TuiWindow front;
+    TuiEdit edit;
+    TuiLabel label;
+    static char buffer[32] = "some text";
+
+    test_init_desktop(&desktop);
+    tui_window_init(&back, 2, 2, 40, 8, "Back");
+    tui_window_init(&front, 20, 4, 30, 8, "Front");
+    tui_edit_init(&edit, 1, 1, 24, buffer, 32);
+    tui_label_init(&label, 4, 1, "label");
+
+    tui_add(&desktop.control, &back.control);
+    tui_add(&back.control, &edit.control);
+    tui_add(&back.control, &label.control);
+    tui_add(&desktop.control, &front.control);
+    tui_draw(&desktop);
+
+    /* A label over an edit: the edit is the cover, the label is drawn after it. */
+    tui_invalidate(&label.control);
+    CHECK(pending_equals_full(&desktop));
+
+    /* The edit, partly under the front window. */
+    tui_invalidate(&edit.control);
+    CHECK(pending_equals_full(&desktop));
+
+    /* The border of the back window, and the front window's own frame. */
+    tui_invalidate_frame(&back.control);
+    CHECK(pending_equals_full(&desktop));
+    tui_invalidate_frame(&front.control);
+    CHECK(pending_equals_full(&desktop));
+
+    /* A rectangle that crosses the border: no child covers it, the window does. */
+    tui_invalidate_rect(&back.control, 0, 0, 5, 3);
+    CHECK(pending_equals_full(&desktop));
+}
+
 static void test_pending_widgets(void)
 {
     Widgets w;
@@ -1211,6 +1287,9 @@ void test_mini_keys_suite(void)
     test_run_case("a double click is also a press",
                   test_double_click_is_also_a_press);
     test_run_case("pending redraw: menus", test_pending_menus);
+    test_run_case("pending redraw: cost in cells", test_pending_cost);
+    test_run_case("pending redraw: starting from the cover",
+                  test_pending_from_the_cover);
     test_run_case("removing a window releases what it holds",
                   test_remove_releases_what_the_subtree_holds);
     test_run_case("combo box closed from outside cancels",

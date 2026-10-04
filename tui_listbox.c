@@ -5,7 +5,9 @@ static int listbox_event(TuiControl *control, TuiEvent *event);
 
 static const TuiClass listbox_class = {
     listbox_draw,
-    listbox_event
+    listbox_event,
+    0,
+    TUI_CLASS_OPAQUE
 };
 
 /*
@@ -57,7 +59,8 @@ static void listbox_scroll_detach(TuiControl *control)
 static const TuiClass listbox_scroll_class = {
     listbox_scroll_draw,
     listbox_scroll_event,
-    listbox_scroll_detach
+    listbox_scroll_detach,
+    TUI_CLASS_OPAQUE
 };
 
 static void listbox_do_ensure_visible(TuiListBox *list)

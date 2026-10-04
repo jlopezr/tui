@@ -7,7 +7,8 @@ static void button_detach(TuiControl *control);
 static const TuiClass button_class = {
     button_draw,
     button_event,
-    button_detach
+    button_detach,
+    TUI_CLASS_OPAQUE
 };
 
 /* A button that leaves the tree is not held down any more. */
