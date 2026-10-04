@@ -4,7 +4,8 @@
 #   python 30.fpga-cpu-console\monitor.py input --script z.tui\test\board_controls.txt
 #
 # Los instantes son milisegundos (tools/board_script.py). La demo arranca con el
-# foco en el cuadro Edit de la fila 13.
+# foco en el cuadro Edit de la fila 13. Hay que cargarla justo antes: el guion
+# cuenta con ese estado inicial, y una segunda pasada sin recargar fallaría.
 @0     keyboard connect
 +0     mouse connect
 +300   expect row 13 contains "Type here"
@@ -28,3 +29,11 @@
 # Y vuelta a marcarlo como estaba.
 +0     click 17 7
 +0     wait row 7 contains "[ ]" 2000
+
+# El combo "None" (fila 15): su triangulo apunta hacia arriba mientras la lista esta
+# abierta, y hacia abajo al cerrarla.
++0     expect row 15 contains "▼"
++0     click 16 15
++0     wait row 15 contains "▲" 2000
++0     key press ESC
++0     wait row 15 contains "▼" 2000

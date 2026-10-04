@@ -504,6 +504,14 @@ static void test_pending_widgets(void)
     CHECK(w.combo.open);
     CHECK(!w.desktop.dirty_all);
     CHECK(pending_equals_full(&w.desktop));
+
+    /* The arrow of the combo points up while its list is open, and back down. */
+    {
+        int x1, y1, x2, y2;
+
+        tui_control_rect(&w.combo.control, &x1, &y1, &x2, &y2);
+        CHECK(test_cell_chars[y1][x2 - 2] == TUI_CH_UP_TRIANGLE);
+    }
     test_key(&w.desktop, TUI_KEY_DOWN);
     test_key(&w.desktop, TUI_KEY_DOWN);
     CHECK(!w.desktop.dirty_all);
@@ -512,6 +520,12 @@ static void test_pending_widgets(void)
     CHECK(!w.combo.open);
     CHECK(tui_combobox_get_selected(&w.combo) == 2);
     CHECK(pending_equals_full(&w.desktop));
+    {
+        int x1, y1, x2, y2;
+
+        tui_control_rect(&w.combo.control, &x1, &y1, &x2, &y2);
+        CHECK(test_cell_chars[y1][x2 - 2] == TUI_CH_DOWN_TRIANGLE);
+    }
 }
 
 /*

@@ -36,8 +36,10 @@ static void combobox_draw(TuiControl *control, TuiDraw *draw)
     if (control->width > 1)
         tui_putc(draw, control->width - 1, 0, ']', attr);
 
+    /* Points down to say "open me", up while the list is open. */
     if (control->width > 2)
-        tui_putc(draw, control->width - 2, 0, TUI_CH_DOWN_TRIANGLE, attr);
+        tui_putc(draw, control->width - 2, 0,
+                 combo->open ? TUI_CH_UP_TRIANGLE : TUI_CH_DOWN_TRIANGLE, attr);
 
     if (control->width <= 3 ||
         combo->selected < 0 ||
