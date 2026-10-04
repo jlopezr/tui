@@ -835,6 +835,49 @@ static TuiControl *demo_open_popup(App *app)
     return 0;
 }
 
+/*
+ * Did this event just open or close the drop-down list of a combo box? If so,
+ * add what has to be repainted: the list's rectangle (still stored in the
+ * window after it is removed), the combo itself and, when closing made a command,
+ * its whole window, since the command may touch its neighbours. Returns 0 for
+ * any other change of the window tree.
+ */
+static int demo_combo_toggled(App *app, const TuiEvent *event,
+                              TuiControl *old_top, Areas *areas)
+{
+    TuiComboBox *combos[2];
+    TuiControl *popup;
+    TuiControl *top;
+    int i;
+    int opened;
+    int closed;
+
+    combos[0] = &app->optimization_combo;
+    combos[1] = &app->scroll_combo;
+    top = app->desktop.control.last;
+
+    for (i = 0; i < 2; ++i) {
+        popup = &combos[i]->popup_window.control;
+        opened = combos[i]->open && top == popup && old_top != popup;
+        closed = !combos[i]->open && old_top == popup && top != popup;
+
+        if (!opened && !closed)
+            continue;
+
+        if (!areas_add(areas, popup) ||
+            !areas_add(areas, &combos[i]->control))
+            return 0;
+
+        if (event->type == TUI_EV_COMMAND &&
+            !areas_add(areas, tui_window_of(&combos[i]->control)))
+            return 0;
+
+        return 1;
+    }
+
+    return 0;
+}
+
 /* 1 while the open drop-down list has its scroll bar being dragged. */
 static int demo_popup_dragging(App *app)
 {
@@ -862,26 +905,30 @@ static int demo_plan(App *app, const TuiEvent *event, int no_handler_ok,
 
     areas->count = 0;
 
-    /* A popup came or went: it covers cells outside any control we know. */
-    if (app->desktop.control.last != old_top)
-        return 0;
-
-    /* A drop-down list stays open: only the list itself can have changed. */
-    if (demo_open_popup(app) != 0)
-        return areas_add(areas, demo_open_popup(app));
-
-    handler = app->desktop.last_handler;
-
-    if (event->type == TUI_EV_COMMAND &&
-        (handler == 0 || !command_is_light(event->command)))
-        return 0;
-
-    if (handler != 0) {
-        if (!areas_add(areas, tui_redraw_owner(handler)))
+    if (app->desktop.control.last != old_top) {
+        /*
+         * A window came or went. The only ones we know are the drop-down lists
+         * of the combo boxes: they change their own rectangle and the combo.
+         */
+        if (!demo_combo_toggled(app, event, old_top, areas))
             return 0;
-    } else if (!no_handler_ok) {
-        /* Shortcuts and menus: only TAB and a click nobody wanted are cheap. */
-        return 0;
+    } else if (demo_open_popup(app) != 0) {
+        /* A drop-down list stays open: only the list itself can have changed. */
+        return areas_add(areas, demo_open_popup(app));
+    } else {
+        handler = app->desktop.last_handler;
+
+        if (event->type == TUI_EV_COMMAND &&
+            (handler == 0 || !command_is_light(event->command)))
+            return 0;
+
+        if (handler != 0) {
+            if (!areas_add(areas, tui_redraw_owner(handler)))
+                return 0;
+        } else if (!no_handler_ok) {
+            /* Shortcuts and menus: only TAB and a click nobody wanted. */
+            return 0;
+        }
     }
 
     new_focus = tui_desktop_get_focus(&app->desktop);
