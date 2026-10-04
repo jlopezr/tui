@@ -49,9 +49,15 @@ static int listbox_scroll_event(TuiControl *control, TuiEvent *event)
     return handled;
 }
 
+static void listbox_scroll_detach(TuiControl *control)
+{
+    tui_scrollbar_class.detach(control);
+}
+
 static const TuiClass listbox_scroll_class = {
     listbox_scroll_draw,
-    listbox_scroll_event
+    listbox_scroll_event,
+    listbox_scroll_detach
 };
 
 static void listbox_do_ensure_visible(TuiListBox *list)

@@ -314,9 +314,15 @@ static int editor_scroll_event(TuiControl *control, TuiEvent *event)
     return handled;
 }
 
+static void editor_scroll_detach(TuiControl *control)
+{
+    tui_scrollbar_class.detach(control);
+}
+
 static const TuiClass editor_scroll_class = {
     editor_scroll_draw,
-    editor_scroll_event
+    editor_scroll_event,
+    editor_scroll_detach
 };
 
 static void editor_init_scrollbar(TuiEditor *editor,

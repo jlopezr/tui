@@ -241,6 +241,34 @@ void tui_bring_to_front(TuiControl *control)
     tui_invalidate(control);
 }
 
+/*
+ * Everything that must not outlive a control that leaves the tree: the focus and
+ * the mouse capture if they were inside it, and what each class holds on to (see
+ * TuiClass.detach). Children first. It runs while the subtree is still attached,
+ * because releasing some of it (a combo box's list) needs the desktop.
+ */
+static void tui_detach_tree(TuiDesktop *desktop, TuiControl *control)
+{
+    TuiControl *child;
+    TuiControl *next;
+
+    for (child = control->first; child != 0; child = next) {
+        next = child->next;
+        tui_detach_tree(desktop, child);
+    }
+
+    if (control->cls != 0 && control->cls->detach != 0)
+        control->cls->detach(control);
+
+    if (desktop != 0) {
+        if (desktop->focused == control)
+            tui_desktop_set_focus(desktop, 0);
+
+        if (desktop->capture == control)
+            tui_desktop_clear_capture(desktop);
+    }
+}
+
 void tui_remove(TuiControl *control)
 {
     TuiControl *parent;
@@ -252,6 +280,8 @@ void tui_remove(TuiControl *control)
 
     /* While it is still in the tree: that is where its rectangle is. */
     tui_invalidate(control);
+
+    tui_detach_tree(tui_find_desktop(control), control);
 
     if (control->prev != 0)
         control->prev->next = control->next;
@@ -1273,6 +1303,21 @@ static void tui_mouse_down(TuiDesktop *desktop, TuiControl *target)
     }
 }
 
+/* Offers a mouse event to 'target' and then to each of its parents. */
+static int tui_bubble_mouse(TuiControl *target, TuiEvent *event)
+{
+    while (target != 0) {
+        if (target->cls != 0 &&
+            target->cls->event != 0 &&
+            target->cls->event(target, event))
+            return 1;
+
+        target = target->parent;
+    }
+
+    return 0;
+}
+
 static int tui_dispatch_mouse(TuiDesktop *desktop,
                               TuiEvent *event)
 {
@@ -1292,13 +1337,22 @@ static int tui_dispatch_mouse(TuiDesktop *desktop,
     }
 
     /* Bubble up until a control handles it. */
-    while (target != 0) {
-        if (target->cls != 0 &&
-            target->cls->event != 0 &&
-            target->cls->event(target, event))
+    if (tui_bubble_mouse(target, event))
+        return 1;
+
+    /*
+     * The console turns a second quick click on the same cell into DOUBLE. Text
+     * controls and lists use that, but a button, a check box or a menu title only
+     * know about a press, and would lose the click. A double click nobody wanted
+     * is a press, offered again.
+     */
+    if (event->mouse_action == TUI_MOUSE_DOUBLE) {
+        event->mouse_action = TUI_MOUSE_DOWN;
+
+        if (tui_bubble_mouse(target, event))
             return 1;
 
-        target = target->parent;
+        event->mouse_action = TUI_MOUSE_DOUBLE;
     }
 
     return 0;

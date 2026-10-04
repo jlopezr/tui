@@ -2,11 +2,19 @@
 
 static void window_draw(TuiControl *control, TuiDraw *draw);
 static int window_event(TuiControl *control, TuiEvent *event);
+static void window_detach(TuiControl *control);
 
 const TuiClass tui_window_class = {
     window_draw,
-    window_event
+    window_event,
+    window_detach
 };
+
+/* A window that leaves the tree is not being dragged any more. */
+static void window_detach(TuiControl *control)
+{
+    ((TuiWindow *)control)->dragging = 0;
+}
 
 /*
  * ------------------------------------------------------------

@@ -2,11 +2,19 @@
 
 static void scrollbar_draw(TuiControl *control, TuiDraw *draw);
 static int scrollbar_event(TuiControl *control, TuiEvent *event);
+static void scrollbar_detach(TuiControl *control);
 
 const TuiClass tui_scrollbar_class = {
     scrollbar_draw,
-    scrollbar_event
+    scrollbar_event,
+    scrollbar_detach
 };
+
+/* A scroll bar that leaves the tree is not being dragged any more. */
+static void scrollbar_detach(TuiControl *control)
+{
+    ((TuiScrollBar *)control)->dragging = 0;
+}
 
 /*
  * ------------------------------------------------------------

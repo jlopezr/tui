@@ -4,11 +4,22 @@
 
 static void combobox_draw(TuiControl *control, TuiDraw *draw);
 static int combobox_event(TuiControl *control, TuiEvent *event);
+static void combobox_detach(TuiControl *control);
 
 static const TuiClass combobox_class = {
     combobox_draw,
-    combobox_event
+    combobox_event,
+    combobox_detach
 };
+
+/*
+ * The list of a combo box is a window of the desktop, not of the window that holds
+ * the combo box, so it would stay on screen when the combo box goes away.
+ */
+static void combobox_detach(TuiControl *control)
+{
+    tui_combobox_close((TuiComboBox *)control);
+}
 
 static int combobox_attr(TuiControl *control)
 {
@@ -211,11 +222,16 @@ static int combobox_popup_mouse(TuiComboBox *combo,
     TuiDesktop *desktop;
     TuiControl *target;
     TuiControl *scroll;
+    int pressed;
 
     desktop = tui_find_desktop(&combo->control);
 
     if (desktop == 0)
         return 0;
+
+    /* The second of two quick clicks arrives as DOUBLE: it is a press as well. */
+    pressed = event->mouse_action == TUI_MOUSE_DOWN ||
+              event->mouse_action == TUI_MOUSE_DOUBLE;
 
     scroll = &combo->popup_list.scrollbar.control;
 
@@ -246,7 +262,7 @@ static int combobox_popup_mouse(TuiComboBox *combo,
         if (target->cls != 0 && target->cls->event != 0)
             target->cls->event(target, event);
 
-        if (event->mouse_action == TUI_MOUSE_DOWN) {
+        if (pressed) {
             combobox_close(combo, 1, event);
             return 1;
         }
@@ -254,7 +270,7 @@ static int combobox_popup_mouse(TuiComboBox *combo,
         return 1;
     }
 
-    if (event->mouse_action == TUI_MOUSE_DOWN) {
+    if (pressed) {
         combobox_close(combo, 0, event);
         return 1;
     }

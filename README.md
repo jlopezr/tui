@@ -350,6 +350,23 @@ tui_dispatch(&desktop, &event);             /* el comando se ejecuta aquí dentr
 En `demo.c` no hay función de despacho ni bucle que mire los comandos: añadir uno es
 añadir una fila.
 
+#### Quitar controles y doble clic
+
+- **`tui_remove` limpia lo que el subárbol retenía.** Suelta el foco y la captura del
+  ratón si estaban dentro y llama al gancho opcional `detach` de cada clase (hijos
+  primero, con el subárbol aún enganchado): una ventana deja de arrastrarse, un
+  botón deja de estar pulsado, una barra deja de arrastrarse y un combo cierra su
+  lista, que es una ventana del escritorio y si no se quedaría flotando. Quitar una
+  pantalla entera es solo `tui_remove` de sus ventanas. Una clase que no declara
+  `detach` (tabla de dos miembros) vale igual. `tui_combobox_close()` está también
+  disponible para cerrar una lista a mano, cancelando.
+- **El doble clic es también una pulsación.** La consola convierte el segundo de dos
+  clics rápidos sobre la misma celda en `TUI_MOUSE_DOUBLE`. Las listas, el área de
+  texto y el editor lo usan, pero un botón, un checkbox o un título de menú solo
+  conocen la pulsación y perdían ese clic. `tui_dispatch` ofrece de nuevo como
+  pulsación un doble clic que nadie gestionó, y el menú y la lista de un combo, que
+  reciben el ratón por captura, lo tratan como pulsación ellos mismos.
+
 **Trampa de `mini-lcc`**: `(unsigned char)x` sobre un `int` no enmascara. Un
 carácter ≥128 leído de un buffer de `char` llega con el signo extendido
 (`0xFFFFFFA4`) y la RAM de texto lo rechaza con un error de MMIO. En

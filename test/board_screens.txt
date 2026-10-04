@@ -1,0 +1,40 @@
+# Cambiar de pantalla en la demo y volver, en la placa (como board_controls.txt:
+# cargar la demo justo antes). El menu "Demo" esta en la columna 8 de la fila 0 y
+# sus opciones en las filas 2 (Controls), 3 (Layout / Mini IDE) y 4 (Editor).
+@0     keyboard connect
++0     mouse connect
++300   expect row 1 contains "Workspace"
+
+# Un clic fuera de una lista abierta la cierra, sin abrir el menu.
++0     click 16 15
++0     wait row 15 contains "▲" 2000
++0     click 8 0
++0     wait row 15 contains "▼" 2000
+
+# A la pantalla Layout.
++0     click 8 0
++0     wait row 3 contains "Layout / Mini IDE" 2000
++0     click 10 3
++0     wait row 29 contains "Demo: Layout / Mini IDE" 2000
++0     expect row 1 contains "Layout Demo / Mini IDE"
++0     expect row 1 absent "Workspace"
+
+# A la pantalla Editor.
++0     click 8 0
++0     wait row 4 contains "Editor" 2000
++0     click 10 4
++0     wait row 1 contains "Editor Demo" 2000
++0     expect row 1 absent "Layout Demo"
+
+# De vuelta a Controls: todo sigue funcionando.
++0     click 8 0
++0     wait row 2 contains "Controls" 2000
++0     click 10 2
++0     wait row 29 contains "Demo: Controls" 2000
++0     expect row 1 contains "Workspace"
++0     click 16 15
++0     wait row 15 contains "▲" 2000
++0     key press ESC
++0     wait row 15 contains "▼" 2000
++0     click 17 7
++0     wait row 29 contains "Mouse support changed" 2000

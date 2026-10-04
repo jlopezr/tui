@@ -709,6 +709,121 @@ static void test_pending_big_rectangle_absorbs_small_ones(void)
     CHECK(pending_equals_full(&s.desktop));
 }
 
+/*
+ * The console turns the second of two quick clicks on a cell into DOUBLE. A
+ * control that only knows about presses must not lose that click.
+ */
+static void test_double_click_is_also_a_press(void)
+{
+    static TuiMenuItem menu_items[] = { { "Run", 84, TUI_KEY_NONE, 0 } };
+    static TuiMenu menus[] = { { "File", menu_items, 1 } };
+    Widgets w;
+    TuiMenuBar menubar;
+    TuiEvent event;
+    int x1, y1, x2, y2;
+    int px1, py1, px2, py2;
+
+    widgets_build(&w);
+    tui_menubar_init(&menubar, menus, 1);
+    tui_add(&w.desktop.control, &menubar.control);
+    tui_draw(&w.desktop);
+
+    /* A check box: the second click of a quick pair toggles it as well. */
+    tui_control_rect(&w.check.control, &x1, &y1, &x2, &y2);
+    CHECK(!tui_checkbox_get_checked(&w.check));
+    CHECK(test_mouse_action(&w.desktop, x1 + 1, y1, TUI_MOUSE_DOUBLE, &event));
+    CHECK(tui_checkbox_get_checked(&w.check));
+    CHECK(pending_equals_full(&w.desktop));
+
+    /* A button: the double click presses it and the release activates it. */
+    tui_control_rect(&w.button.control, &x1, &y1, &x2, &y2);
+    CHECK(test_mouse_action(&w.desktop, x1 + 1, y1, TUI_MOUSE_DOUBLE, &event));
+    CHECK(w.button.pressed);
+    CHECK(test_mouse_action(&w.desktop, x1 + 1, y1, TUI_MOUSE_UP, &event));
+    CHECK(event.type == TUI_EV_COMMAND);
+
+    /* A menu title: DOUBLE opens the menu, and on the same title closes it. */
+    CHECK(test_mouse_action(&w.desktop, 2, 0, TUI_MOUSE_DOUBLE, &event));
+    CHECK(menubar.active);
+    CHECK(test_mouse_action(&w.desktop, 2, 0, TUI_MOUSE_DOUBLE, &event));
+    CHECK(!menubar.active);
+
+    /* A combo box: DOUBLE opens it; DOUBLE on an item chooses it and closes. */
+    tui_control_rect(&w.combo.control, &x1, &y1, &x2, &y2);
+    CHECK(test_mouse_action(&w.desktop, x1 + 1, y1, TUI_MOUSE_DOUBLE, &event));
+    CHECK(w.combo.open);
+    tui_control_rect(&w.combo.popup_window.control, &px1, &py1, &px2, &py2);
+    CHECK(test_mouse_action(&w.desktop, px1 + 2, py1 + 2, TUI_MOUSE_DOUBLE, &event));
+    CHECK(!w.combo.open);
+    CHECK(tui_combobox_get_selected(&w.combo) == 1);
+    CHECK(pending_equals_full(&w.desktop));
+
+    /* ... and DOUBLE outside the list closes it without choosing. */
+    CHECK(test_mouse_action(&w.desktop, x1 + 1, y1, TUI_MOUSE_DOUBLE, &event));
+    CHECK(w.combo.open);
+    CHECK(test_mouse_action(&w.desktop, 70, 20, TUI_MOUSE_DOUBLE, &event));
+    CHECK(!w.combo.open);
+    CHECK(tui_combobox_get_selected(&w.combo) == 1);
+    CHECK(pending_equals_full(&w.desktop));
+}
+
+/*
+ * Taking a window out of the tree lets go of everything it was holding: the focus
+ * and the capture, an open list (a window of the desktop, not of this window), a
+ * drag and a press in progress.
+ */
+static void test_remove_releases_what_the_subtree_holds(void)
+{
+    Widgets w;
+    TuiWindow other;
+    TuiEdit other_edit;
+    char buffer[16];
+
+    widgets_build(&w);
+    buffer[0] = '\0';
+    tui_window_init(&other, 44, 2, 30, 6, "Other");
+    tui_edit_init(&other_edit, 1, 1, 20, buffer, 16);
+    tui_add(&w.desktop.control, &other.control);
+    tui_add(&other.control, &other_edit.control);
+    tui_draw(&w.desktop);
+
+    /* An open list, a window being dragged, a pressed button, a scroll bar held. */
+    tui_desktop_set_focus(&w.desktop, &w.combo.control);
+    test_key(&w.desktop, ' ');
+    CHECK(w.combo.open);
+    CHECK(w.desktop.capture == &w.combo.control);
+    w.window.dragging = 1;
+    w.button.pressed = 1;
+    w.list.scrollbar.dragging = 1;
+    tui_draw_pending(&w.desktop);
+
+    tui_remove(&w.window.control);
+
+    CHECK(!w.combo.open);
+    CHECK(w.combo.popup_window.control.parent == 0);
+    CHECK(w.desktop.capture == 0);
+    CHECK(tui_desktop_get_focus(&w.desktop) == 0);
+    CHECK(w.window.dragging == 0);
+    CHECK(w.button.pressed == 0);
+    CHECK(w.list.scrollbar.dragging == 0);
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+
+    /* It comes back as new and works. */
+    tui_add(&w.desktop.control, &w.window.control);
+    tui_desktop_set_focus(&w.desktop, &w.combo.control);
+    test_key(&w.desktop, ' ');
+    CHECK(w.combo.open);
+    CHECK(pending_equals_full(&w.desktop));
+    tui_combobox_close(&w.combo);
+
+    /* The focus belongs to somebody else: removing this window leaves it alone. */
+    tui_desktop_set_focus(&w.desktop, &other_edit.control);
+    tui_remove(&w.window.control);
+    CHECK(tui_desktop_get_focus(&w.desktop) == &other_edit.control);
+    CHECK(pending_equals_full(&w.desktop));
+}
+
 /* Closing the list from outside cancels, like Esc, and repaints what it covered. */
 static void test_combobox_close_cancels(void)
 {
@@ -945,6 +1060,10 @@ void test_mini_keys_suite(void)
                   test_pending_big_rectangle_absorbs_small_ones);
     test_run_case("pending redraw: combo opened from another window",
                   test_pending_combo_from_another_window);
+    test_run_case("a double click is also a press",
+                  test_double_click_is_also_a_press);
+    test_run_case("removing a window releases what it holds",
+                  test_remove_releases_what_the_subtree_holds);
     test_run_case("combo box closed from outside cancels",
                   test_combobox_close_cancels);
     test_run_case("command table lookup", test_command_table_lookup);

@@ -301,9 +301,15 @@ static int textarea_scroll_event(TuiControl *control, TuiEvent *event)
     return handled;
 }
 
+static void textarea_scroll_detach(TuiControl *control)
+{
+    tui_scrollbar_class.detach(control);
+}
+
 static const TuiClass textarea_scroll_class = {
     textarea_scroll_draw,
-    textarea_scroll_event
+    textarea_scroll_event,
+    textarea_scroll_detach
 };
 
 static void textarea_init_scrollbar(TuiTextArea *area,

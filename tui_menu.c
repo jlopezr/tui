@@ -281,10 +281,15 @@ static int popup_mouse(TuiPopupMenu *popup, TuiEvent *event)
     int item;
     int title;
     int left;
+    int pressed;
 
     bar = popup->owner;
     left = (event->mouse_action == TUI_MOUSE_MOVE) ||
            (event->mouse_buttons & TUI_MOUSE_LEFT);
+
+    /* The second of two quick clicks arrives as DOUBLE: it is a press as well. */
+    pressed = event->mouse_action == TUI_MOUSE_DOWN ||
+              event->mouse_action == TUI_MOUSE_DOUBLE;
 
     if (!left)
         return 1;
@@ -311,8 +316,7 @@ static int popup_mouse(TuiPopupMenu *popup, TuiEvent *event)
                             event->mouse_y);
 
     if (title >= 0) {
-        if (event->mouse_action == TUI_MOUSE_DOWN &&
-            title == bar->selected)
+        if (pressed && title == bar->selected)
             tui_menubar_close(bar);
         else if (title != bar->selected &&
                  event->mouse_action != TUI_MOUSE_UP)
@@ -322,7 +326,7 @@ static int popup_mouse(TuiPopupMenu *popup, TuiEvent *event)
     }
 
     /* Click outside popup and titles closes; the click is consumed. */
-    if (event->mouse_action == TUI_MOUSE_DOWN)
+    if (pressed)
         tui_menubar_close(bar);
 
     return 1;

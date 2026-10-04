@@ -106,30 +106,20 @@ typedef struct App {
  * ------------------------------------------------------------
  */
 
+/*
+ * Taking the windows out of the desktop is all it takes: tui_remove() releases the
+ * focus and the capture if they were inside, closes the combo boxes' lists and
+ * ends any drag or press in progress.
+ */
 static void demo_hide_active(App *app)
 {
-    /* Their lists are windows of the desktop: they would outlive the screen. */
-    tui_combobox_close(&app->optimization_combo);
-    tui_combobox_close(&app->scroll_combo);
-
-    tui_desktop_set_focus(&app->desktop, 0);
-    tui_desktop_clear_capture(&app->desktop);
-
     if (app->active_demo == DEMO_CONTROLS) {
-        app->label_window.dragging = 0;
-        app->button_window.dragging = 0;
-        app->edit_window.dragging = 0;
-        app->list_window.dragging = 0;
-        app->note_window.dragging = 0;
-        app->code_window.dragging = 0;
-        app->button.pressed = 0;
         tui_remove(&app->left.control);
         tui_remove(&app->right.control);
         tui_remove(&app->workspace.control);
     } else if (app->active_demo == DEMO_LAYOUT) {
         tui_remove(&app->layout_view.control);
     } else if (app->active_demo == DEMO_EDITOR) {
-        app->editor_view.dragging = 0;
         tui_remove(&app->editor_view.control);
     }
 

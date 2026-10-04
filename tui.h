@@ -154,6 +154,15 @@ struct TuiEvent {
 struct TuiClass {
     void (*draw)(TuiControl *control, TuiDraw *draw);
     int  (*event)(TuiControl *control, TuiEvent *event);
+
+    /*
+     * Called by tui_remove() for every control of the subtree that is taken out
+     * of the tree, children first, while the control is still attached. Drops
+     * whatever the control was holding that must not outlive it (an interaction
+     * in progress, a window it opened). Optional: a class table with only the two
+     * members above leaves it 0.
+     */
+    void (*detach)(TuiControl *control);
 };
 
 
