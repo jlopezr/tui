@@ -30,71 +30,6 @@
 #define DEMO_LAYOUT       2
 #define DEMO_EDITOR       3
 
-static const char *demo_items[] = {
-    "Apple",
-    "Banana",
-    "Orange",
-    "Peach",
-    "Pear",
-    "Strawberry",
-    "Watermelon",
-    "Cherry",
-    "Lemon",
-    "Mango"
-};
-
-static const char *scroll_items[] = {
-    "Item 01", "Item 02", "Item 03", "Item 04", "Item 05",
-    "Item 06", "Item 07", "Item 08", "Item 09", "Item 10",
-    "Item 11", "Item 12", "Item 13", "Item 14", "Item 15",
-    "Item 16", "Item 17", "Item 18", "Item 19", "Item 20"
-};
-
-static const char *short_items[] = {
-    "One",
-    "Two",
-    "Three"
-};
-
-static const char *optimization_items[] = {
-    "None",
-    "Size",
-    "Speed",
-    "Debug"
-};
-
-static const char *editor_sample[] = {
-    "10 REM Editor demo: this is only sample text",
-    "20 PRINT \"HELLO FROM THE EDITOR\"",
-    "30 FOR I = 1 TO 10",
-    "40     PRINT \"I = \"; I; \" and a rather long line that needs the horizontal scroll bar to be read completely\"",
-    "50 NEXT I",
-    "60 ",
-    "70 REM Cursor keys, Home, End, Page Up and Page Down move around",
-    "80 REM Type, Enter, Backspace and Delete edit the text",
-    "90 REM The mouse places the cursor and drives the scroll bars",
-    "100 LET A = 1",
-    "110 LET B = 2",
-    "120 LET C = A + B",
-    "130 PRINT C",
-    "140 IF C > 2 THEN PRINT \"C IS GREATER THAN TWO\"",
-    "150 GOTO 170",
-    "160 PRINT \"NEVER PRINTED\"",
-    "170 PRINT \"BYE\"",
-    "180 END"
-};
-
-#define EDITOR_SAMPLE_LINES \
-    ((int)(sizeof(editor_sample) / sizeof(editor_sample[0])))
-
-static const char *layout_file_items[] = {
-    "src/",
-    "  main.c",
-    "include/",
-    "  tui.h",
-    "Makefile"
-};
-
 typedef struct App {
     int running;
     int active_demo;
@@ -165,72 +100,91 @@ typedef struct App {
     TuiLabel layout_output_line_2;
 } App;
 
-static void demo_show_controls(App *app);
-static void demo_show_layout(App *app);
-static void demo_show_editor(App *app);
-static void demo_update_scroll_labels(App *app);
-static void demo_update_editor_status(App *app);
+/*
+ * ------------------------------------------------------------
+ * Switching between screens
+ * ------------------------------------------------------------
+ */
 
-/* What a command does besides showing its text. The context is the App. */
-static void cmd_quit(void *context, int command)
+static void demo_hide_active(App *app)
 {
-    (void)command;
-    ((App *)context)->running = 0;
+    TuiEvent event;
+
+    if (app->active_demo == DEMO_CONTROLS &&
+        (app->optimization_combo.open ||
+         app->scroll_combo.open)) {
+        event.type = TUI_EV_KEY;
+        event.key = TUI_KEY_ESCAPE;
+        event.command = TUI_CMD_NONE;
+        event.source = 0;
+        event.mouse_x = 0;
+        event.mouse_y = 0;
+        event.mouse_action = 0;
+        event.mouse_buttons = 0;
+        tui_dispatch(&app->desktop, &event);
+    }
+
+    tui_desktop_set_focus(&app->desktop, 0);
+    tui_desktop_clear_capture(&app->desktop);
+
+    if (app->active_demo == DEMO_CONTROLS) {
+        app->label_window.dragging = 0;
+        app->button_window.dragging = 0;
+        app->edit_window.dragging = 0;
+        app->list_window.dragging = 0;
+        app->note_window.dragging = 0;
+        app->code_window.dragging = 0;
+        app->button.pressed = 0;
+        tui_remove(&app->left.control);
+        tui_remove(&app->right.control);
+        tui_remove(&app->workspace.control);
+    } else if (app->active_demo == DEMO_LAYOUT) {
+        tui_remove(&app->layout_view.control);
+    } else if (app->active_demo == DEMO_EDITOR) {
+        app->editor_view.dragging = 0;
+        tui_remove(&app->editor_view.control);
+    }
+
+    app->active_demo = DEMO_NONE;
 }
 
-static void cmd_scroll(void *context, int command)
-{
-    (void)command;
-    demo_update_scroll_labels((App *)context);
-}
+/*
+ * ------------------------------------------------------------
+ * Controls demo
+ * ------------------------------------------------------------
+ */
 
-static void cmd_demo_controls(void *context, int command)
-{
-    (void)command;
-    demo_show_controls((App *)context);
-}
+static const char *demo_items[] = {
+    "Apple",
+    "Banana",
+    "Orange",
+    "Peach",
+    "Pear",
+    "Strawberry",
+    "Watermelon",
+    "Cherry",
+    "Lemon",
+    "Mango"
+};
 
-static void cmd_demo_layout(void *context, int command)
-{
-    (void)command;
-    demo_show_layout((App *)context);
-}
+static const char *scroll_items[] = {
+    "Item 01", "Item 02", "Item 03", "Item 04", "Item 05",
+    "Item 06", "Item 07", "Item 08", "Item 09", "Item 10",
+    "Item 11", "Item 12", "Item 13", "Item 14", "Item 15",
+    "Item 16", "Item 17", "Item 18", "Item 19", "Item 20"
+};
 
-static void cmd_demo_editor(void *context, int command)
-{
-    (void)command;
-    demo_show_editor((App *)context);
-}
+static const char *short_items[] = {
+    "One",
+    "Two",
+    "Three"
+};
 
-static void cmd_editor_state(void *context, int command)
-{
-    (void)command;
-    demo_update_editor_status((App *)context);
-}
-
-/* Text for the status bar (0: leave it), and the action (0: none). */
-static const TuiCommand command_table[] = {
-    { CMD_NEW,           "Command: File -> New",           0 },
-    { CMD_OPEN,          "Command: File -> Open",          0 },
-    { CMD_SAVE,          "Command: File -> Save",          0 },
-    { CMD_RUN,           "Command: Run -> Run",            0 },
-    { CMD_STOP,          "Command: Run -> Stop",           0 },
-    { CMD_ABOUT,         "Command: Help -> About",         0 },
-    { CMD_LIST_OPEN,     "Command: ListBox activate",      0 },
-    { CMD_BUTTON_ACTION, "Command: Button click",          0 },
-    { CMD_MOUSE_TOGGLE,  "Command: Mouse support changed", 0 },
-    { CMD_LANG_BASIC,    "Command: Language -> BASIC",     0 },
-    { CMD_LANG_FORTH,    "Command: Language -> Forth",     0 },
-    { CMD_LANG_C,        "Command: Language -> C",         0 },
-    { CMD_OPTIMIZATION,  "Command: Optimization changed",  0 },
-    { CMD_SCROLL_V,      "Command: Vertical scroll bar",   cmd_scroll },
-    { CMD_SCROLL_H,      "Command: Horizontal scroll bar", cmd_scroll },
-    { CMD_DEMO_CONTROLS, "Demo: Controls",                 cmd_demo_controls },
-    { CMD_DEMO_LAYOUT,   "Demo: Layout / Mini IDE",        cmd_demo_layout },
-    { CMD_DEMO_EDITOR,   "Demo: Editor",                   cmd_demo_editor },
-    { CMD_EDITOR_STATE,  0,                                cmd_editor_state },
-    { CMD_QUIT,          "Command: File -> Exit",          cmd_quit },
-    TUI_COMMANDS_END
+static const char *optimization_items[] = {
+    "None",
+    "Size",
+    "Speed",
+    "Debug"
 };
 
 static void demo_update_scroll_labels(App *app)
@@ -246,90 +200,6 @@ static void demo_update_scroll_labels(App *app)
     tui_label_set_text(&app->vscroll_label, app->vscroll_text);
     tui_label_set_text(&app->hscroll_label, app->hscroll_text);
 #endif
-}
-
-/* The editor state is queried from the editor, never from its buffer. */
-static void demo_update_editor_status(App *app)
-{
-#ifdef TUI_BACKEND_MMIO
-    tui_statusbar_set_text(&app->status_bar, "Editor");
-#else
-    TuiEditorPosition position;
-
-    tui_editor_get_position(&app->editor, &position);
-    sprintf(app->editor_status, "Ln %d, Col %d%s",
-            position.line + 1,
-            position.column + 1,
-            tui_editor_is_modified(&app->editor) ?
-            "    Modified" : "");
-    tui_statusbar_set_text(&app->status_bar, app->editor_status);
-#endif
-}
-
-static void note_control_event(App *app, TuiEvent *event)
-{
-    TuiControl *control;
-
-    control = 0;
-
-    if (event->type == TUI_EV_KEY) {
-        control = tui_desktop_get_focus(&app->desktop);
-    } else if (event->type == TUI_EV_MOUSE &&
-               event->mouse_action == TUI_MOUSE_DOWN) {
-        control = tui_hit_test(&app->desktop.control,
-                               event->mouse_x,
-                               event->mouse_y);
-    }
-
-    if (control == &app->edit.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Control: Edit");
-    else if (control == &app->mouse_checkbox.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Control: CheckBox");
-    else if (control == &app->basic_radio.control ||
-             control == &app->forth_radio.control ||
-             control == &app->c_radio.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Control: RadioButton");
-    else if (control == &app->optimization_combo.control ||
-             control == &app->scroll_combo.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Control: ComboBox");
-    else if (control == &app->listbox.control ||
-             control == &app->scroll_list.control ||
-             control == &app->short_list.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Control: ListBox");
-    else if (control == &app->note_area.control ||
-             control == &app->code_area.control ||
-             control == &app->help_area.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Control: TextArea");
-    else if (control == &app->button.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Control: Button");
-    else if (control == &app->vscroll.control ||
-             control == &app->hscroll.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Control: ScrollBar");
-    else if (control == &app->label.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Control: Label");
-    else if (control == &app->editor.control)
-        return;
-    else if (control == &app->layout_files.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Layout: Project files");
-    else if (control == &app->label_window.control ||
-             control == &app->button_window.control ||
-             control == &app->edit_window.control ||
-             control == &app->list_window.control ||
-             control == &app->note_window.control ||
-             control == &app->code_window.control ||
-             control == &app->editor_view.control)
-        tui_statusbar_set_text(&app->status_bar,
-                               "Window: drag title to move");
 }
 
 static void demo_build_controls(App *app)
@@ -492,46 +362,46 @@ static void demo_build_controls(App *app)
     tui_add(&app->right.control, &app->help_area.control);
 }
 
-static void demo_build_editor(App *app)
+static void demo_show_controls(App *app)
 {
-    int i;
-
-    tui_window_init(&app->editor_view, 0, 0, 1, 1, "Editor Demo");
-    app->editor_view.control.dock = TUI_DOCK_FILL;
-
-    app->editor_buffer[0] = '\0';
-    tui_linear_text_model_init(&app->editor_model,
-                               app->editor_buffer,
-                               (int)sizeof(app->editor_buffer));
-
-    for (i = 0; i < EDITOR_SAMPLE_LINES; ++i) {
-        const char *line;
-        int length;
-
-        line = editor_sample[i];
-
-        for (length = 0; line[length] != '\0'; ++length)
-            ;
-
-        tui_text_model_insert(&app->editor_model.model,
-                              tui_text_model_length(
-                                  &app->editor_model.model),
-                              line, length);
-        tui_text_model_insert(&app->editor_model.model,
-                              tui_text_model_length(
-                                  &app->editor_model.model),
-                              "\n", 1);
+    if (app->active_demo != DEMO_CONTROLS) {
+        demo_hide_active(app);
+        tui_add(&app->desktop.control, &app->left.control);
+        tui_add(&app->desktop.control, &app->right.control);
+        tui_add(&app->desktop.control, &app->workspace.control);
+        app->active_demo = DEMO_CONTROLS;
     }
 
-    /* The editor only sees the generic model, not the buffer. */
-    tui_editor_init(&app->editor, 0, 0, 1, 1,
-                    &app->editor_model.model);
-    app->editor.control.dock = TUI_DOCK_FILL;
-    app->editor.control.attr = TUI_ATTR(TUI_LIGHTGRAY, TUI_BLUE);
-    tui_editor_set_command(&app->editor, CMD_EDITOR_STATE);
-
-    tui_add(&app->editor_view.control, &app->editor.control);
+    tui_desktop_set_focus(&app->desktop, &app->edit.control);
+    tui_statusbar_set_text(&app->status_bar,
+                           "Demo: Controls");
 }
+
+static void cmd_scroll(void *context, int command)
+{
+    (void)command;
+    demo_update_scroll_labels((App *)context);
+}
+
+static void cmd_demo_controls(void *context, int command)
+{
+    (void)command;
+    demo_show_controls((App *)context);
+}
+
+/*
+ * ------------------------------------------------------------
+ * Layout / Mini IDE demo
+ * ------------------------------------------------------------
+ */
+
+static const char *layout_file_items[] = {
+    "src/",
+    "  main.c",
+    "include/",
+    "  tui.h",
+    "Makefile"
+};
 
 static void demo_build_layout(App *app)
 {
@@ -629,63 +499,6 @@ static void demo_build_layout(App *app)
             &app->editor_window.control);
 }
 
-static void demo_hide_active(App *app)
-{
-    TuiEvent event;
-
-    if (app->active_demo == DEMO_CONTROLS &&
-        (app->optimization_combo.open ||
-         app->scroll_combo.open)) {
-        event.type = TUI_EV_KEY;
-        event.key = TUI_KEY_ESCAPE;
-        event.command = TUI_CMD_NONE;
-        event.source = 0;
-        event.mouse_x = 0;
-        event.mouse_y = 0;
-        event.mouse_action = 0;
-        event.mouse_buttons = 0;
-        tui_dispatch(&app->desktop, &event);
-    }
-
-    tui_desktop_set_focus(&app->desktop, 0);
-    tui_desktop_clear_capture(&app->desktop);
-
-    if (app->active_demo == DEMO_CONTROLS) {
-        app->label_window.dragging = 0;
-        app->button_window.dragging = 0;
-        app->edit_window.dragging = 0;
-        app->list_window.dragging = 0;
-        app->note_window.dragging = 0;
-        app->code_window.dragging = 0;
-        app->button.pressed = 0;
-        tui_remove(&app->left.control);
-        tui_remove(&app->right.control);
-        tui_remove(&app->workspace.control);
-    } else if (app->active_demo == DEMO_LAYOUT) {
-        tui_remove(&app->layout_view.control);
-    } else if (app->active_demo == DEMO_EDITOR) {
-        app->editor_view.dragging = 0;
-        tui_remove(&app->editor_view.control);
-    }
-
-    app->active_demo = DEMO_NONE;
-}
-
-static void demo_show_controls(App *app)
-{
-    if (app->active_demo != DEMO_CONTROLS) {
-        demo_hide_active(app);
-        tui_add(&app->desktop.control, &app->left.control);
-        tui_add(&app->desktop.control, &app->right.control);
-        tui_add(&app->desktop.control, &app->workspace.control);
-        app->active_demo = DEMO_CONTROLS;
-    }
-
-    tui_desktop_set_focus(&app->desktop, &app->edit.control);
-    tui_statusbar_set_text(&app->status_bar,
-                           "Demo: Controls");
-}
-
 static void demo_show_layout(App *app)
 {
     if (app->active_demo != DEMO_LAYOUT) {
@@ -701,6 +514,101 @@ static void demo_show_layout(App *app)
                            "Demo: Layout / Mini IDE");
 }
 
+static void cmd_demo_layout(void *context, int command)
+{
+    (void)command;
+    demo_show_layout((App *)context);
+}
+
+/*
+ * ------------------------------------------------------------
+ * Editor demo
+ * ------------------------------------------------------------
+ */
+
+static const char *editor_sample[] = {
+    "10 REM Editor demo: this is only sample text",
+    "20 PRINT \"HELLO FROM THE EDITOR\"",
+    "30 FOR I = 1 TO 10",
+    "40     PRINT \"I = \"; I; \" and a rather long line that needs the horizontal scroll bar to be read completely\"",
+    "50 NEXT I",
+    "60 ",
+    "70 REM Cursor keys, Home, End, Page Up and Page Down move around",
+    "80 REM Type, Enter, Backspace and Delete edit the text",
+    "90 REM The mouse places the cursor and drives the scroll bars",
+    "100 LET A = 1",
+    "110 LET B = 2",
+    "120 LET C = A + B",
+    "130 PRINT C",
+    "140 IF C > 2 THEN PRINT \"C IS GREATER THAN TWO\"",
+    "150 GOTO 170",
+    "160 PRINT \"NEVER PRINTED\"",
+    "170 PRINT \"BYE\"",
+    "180 END"
+};
+
+#define EDITOR_SAMPLE_LINES \
+    ((int)(sizeof(editor_sample) / sizeof(editor_sample[0])))
+
+/* The editor state is queried from the editor, never from its buffer. */
+static void demo_update_editor_status(App *app)
+{
+#ifdef TUI_BACKEND_MMIO
+    tui_statusbar_set_text(&app->status_bar, "Editor");
+#else
+    TuiEditorPosition position;
+
+    tui_editor_get_position(&app->editor, &position);
+    sprintf(app->editor_status, "Ln %d, Col %d%s",
+            position.line + 1,
+            position.column + 1,
+            tui_editor_is_modified(&app->editor) ?
+            "    Modified" : "");
+    tui_statusbar_set_text(&app->status_bar, app->editor_status);
+#endif
+}
+
+static void demo_build_editor(App *app)
+{
+    int i;
+
+    tui_window_init(&app->editor_view, 0, 0, 1, 1, "Editor Demo");
+    app->editor_view.control.dock = TUI_DOCK_FILL;
+
+    app->editor_buffer[0] = '\0';
+    tui_linear_text_model_init(&app->editor_model,
+                               app->editor_buffer,
+                               (int)sizeof(app->editor_buffer));
+
+    for (i = 0; i < EDITOR_SAMPLE_LINES; ++i) {
+        const char *line;
+        int length;
+
+        line = editor_sample[i];
+
+        for (length = 0; line[length] != '\0'; ++length)
+            ;
+
+        tui_text_model_insert(&app->editor_model.model,
+                              tui_text_model_length(
+                                  &app->editor_model.model),
+                              line, length);
+        tui_text_model_insert(&app->editor_model.model,
+                              tui_text_model_length(
+                                  &app->editor_model.model),
+                              "\n", 1);
+    }
+
+    /* The editor only sees the generic model, not the buffer. */
+    tui_editor_init(&app->editor, 0, 0, 1, 1,
+                    &app->editor_model.model);
+    app->editor.control.dock = TUI_DOCK_FILL;
+    app->editor.control.attr = TUI_ATTR(TUI_LIGHTGRAY, TUI_BLUE);
+    tui_editor_set_command(&app->editor, CMD_EDITOR_STATE);
+
+    tui_add(&app->editor_view.control, &app->editor.control);
+}
+
 static void demo_show_editor(App *app)
 {
     if (app->active_demo != DEMO_EDITOR) {
@@ -712,6 +620,122 @@ static void demo_show_editor(App *app)
     tui_desktop_set_focus(&app->desktop, &app->editor.control);
     demo_update_editor_status(app);
 }
+
+static void cmd_demo_editor(void *context, int command)
+{
+    (void)command;
+    demo_show_editor((App *)context);
+}
+
+static void cmd_editor_state(void *context, int command)
+{
+    (void)command;
+    demo_update_editor_status((App *)context);
+}
+
+/*
+ * ------------------------------------------------------------
+ * Application: status text, commands, menus and the main loop
+ * ------------------------------------------------------------
+ */
+
+static void note_control_event(App *app, TuiEvent *event)
+{
+    TuiControl *control;
+
+    control = 0;
+
+    if (event->type == TUI_EV_KEY) {
+        control = tui_desktop_get_focus(&app->desktop);
+    } else if (event->type == TUI_EV_MOUSE &&
+               event->mouse_action == TUI_MOUSE_DOWN) {
+        control = tui_hit_test(&app->desktop.control,
+                               event->mouse_x,
+                               event->mouse_y);
+    }
+
+    if (control == &app->edit.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: Edit");
+    else if (control == &app->mouse_checkbox.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: CheckBox");
+    else if (control == &app->basic_radio.control ||
+             control == &app->forth_radio.control ||
+             control == &app->c_radio.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: RadioButton");
+    else if (control == &app->optimization_combo.control ||
+             control == &app->scroll_combo.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: ComboBox");
+    else if (control == &app->listbox.control ||
+             control == &app->scroll_list.control ||
+             control == &app->short_list.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: ListBox");
+    else if (control == &app->note_area.control ||
+             control == &app->code_area.control ||
+             control == &app->help_area.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: TextArea");
+    else if (control == &app->button.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: Button");
+    else if (control == &app->vscroll.control ||
+             control == &app->hscroll.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: ScrollBar");
+    else if (control == &app->label.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Control: Label");
+    else if (control == &app->editor.control)
+        return;
+    else if (control == &app->layout_files.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Layout: Project files");
+    else if (control == &app->label_window.control ||
+             control == &app->button_window.control ||
+             control == &app->edit_window.control ||
+             control == &app->list_window.control ||
+             control == &app->note_window.control ||
+             control == &app->code_window.control ||
+             control == &app->editor_view.control)
+        tui_statusbar_set_text(&app->status_bar,
+                               "Window: drag title to move");
+}
+
+/* What a command does besides showing its text. The context is the App. */
+static void cmd_quit(void *context, int command)
+{
+    (void)command;
+    ((App *)context)->running = 0;
+}
+
+/* Text for the status bar (0: leave it), and the action (0: none). */
+static const TuiCommand command_table[] = {
+    { CMD_NEW,           "Command: File -> New",           0 },
+    { CMD_OPEN,          "Command: File -> Open",          0 },
+    { CMD_SAVE,          "Command: File -> Save",          0 },
+    { CMD_RUN,           "Command: Run -> Run",            0 },
+    { CMD_STOP,          "Command: Run -> Stop",           0 },
+    { CMD_ABOUT,         "Command: Help -> About",         0 },
+    { CMD_LIST_OPEN,     "Command: ListBox activate",      0 },
+    { CMD_BUTTON_ACTION, "Command: Button click",          0 },
+    { CMD_MOUSE_TOGGLE,  "Command: Mouse support changed", 0 },
+    { CMD_LANG_BASIC,    "Command: Language -> BASIC",     0 },
+    { CMD_LANG_FORTH,    "Command: Language -> Forth",     0 },
+    { CMD_LANG_C,        "Command: Language -> C",         0 },
+    { CMD_OPTIMIZATION,  "Command: Optimization changed",  0 },
+    { CMD_SCROLL_V,      "Command: Vertical scroll bar",   cmd_scroll },
+    { CMD_SCROLL_H,      "Command: Horizontal scroll bar", cmd_scroll },
+    { CMD_DEMO_CONTROLS, "Demo: Controls",                 cmd_demo_controls },
+    { CMD_DEMO_LAYOUT,   "Demo: Layout / Mini IDE",        cmd_demo_layout },
+    { CMD_DEMO_EDITOR,   "Demo: Editor",                   cmd_demo_editor },
+    { CMD_EDITOR_STATE,  0,                                cmd_editor_state },
+    { CMD_QUIT,          "Command: File -> Exit",          cmd_quit },
+    TUI_COMMANDS_END
+};
 
 static TuiMenuItem file_items[] = {
     { "New",     CMD_NEW,  TUI_KEY_NONE, 0 },
