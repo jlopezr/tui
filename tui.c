@@ -415,24 +415,9 @@ void tui_desktop_init(TuiDesktop *desktop)
 
     desktop->dirty_all = 1;
     desktop->dirty_count = 0;
+    desktop->frame_count = 0;
     desktop->dirty_serial = 0;
     desktop->partial_draw = 0;
-}
-
-/*
- * Only the outer ring of cells of a control. The children of a window live inside
- * the border, so repainting the ring does not touch them: far cheaper than the
- * whole control when just the frame changed (the active window, a title).
- */
-void tui_invalidate_frame(TuiControl *control)
-{
-    if (control == 0)
-        return;
-
-    tui_invalidate_rect(control, 0, 0, control->width, 1);
-    tui_invalidate_rect(control, 0, control->height - 1, control->width, 1);
-    tui_invalidate_rect(control, 0, 1, 1, control->height - 2);
-    tui_invalidate_rect(control, control->width - 1, 1, 1, control->height - 2);
 }
 
 void tui_desktop_set_focus(TuiDesktop *desktop,
@@ -783,6 +768,7 @@ void tui_draw(TuiDesktop *desktop)
 
     desktop->dirty_all = 0;
     desktop->dirty_count = 0;
+    desktop->frame_count = 0;
 
     tui_draw_end(desktop);
 }
@@ -837,6 +823,21 @@ static void tui_dirty_add(TuiDesktop *desktop,
         ++kept;
     }
     desktop->dirty_count = kept;
+
+    /* A frame inside the new rectangle is repainted with it anyway. */
+    kept = 0;
+    for (i = 0; i < desktop->frame_count; ++i) {
+        if (x1 <= desktop->frames[i][0] && y1 <= desktop->frames[i][1] &&
+            x2 >= desktop->frames[i][2] && y2 >= desktop->frames[i][3])
+            continue;
+
+        if (kept != i) {
+            for (j = 0; j < 4; ++j)
+                desktop->frames[kept][j] = desktop->frames[i][j];
+        }
+        ++kept;
+    }
+    desktop->frame_count = kept;
 
     /*
      * No room: grow the rectangle that would grow the least to take this one.
@@ -896,6 +897,73 @@ void tui_invalidate(TuiControl *control)
     tui_invalidate_rect(control, 0, 0, control->width, control->height);
 }
 
+/*
+ * Only the outer ring of cells of a control. The children of a window live inside
+ * the border, so repainting the ring does not touch them: far cheaper than the
+ * whole control when just the frame changed (the active window, a title). It is
+ * one entry of its own list and not four rectangles; tui_draw_pending() expands
+ * it into the four strips.
+ */
+void tui_invalidate_frame(TuiControl *control)
+{
+    TuiDesktop *desktop;
+    int x1;
+    int y1;
+    int x2;
+    int y2;
+    int i;
+
+    if (control == 0)
+        return;
+
+    desktop = tui_find_desktop(control);
+
+    if (desktop == 0)
+        return;
+
+    tui_control_screen_pos(control, &x1, &y1);
+    x2 = x1 + control->width;
+    y2 = y1 + control->height;
+
+    /* No ring to speak of, or it is cut by the screen: take the whole thing. */
+    if (control->width < 3 || control->height < 3 ||
+        x1 < 0 || y1 < 0 ||
+        x2 > desktop->control.width || y2 > desktop->control.height) {
+        tui_invalidate(control);
+        return;
+    }
+
+    ++desktop->dirty_serial;
+
+    if (desktop->dirty_all)
+        return;
+
+    /* Inside something already pending, or already listed. */
+    for (i = 0; i < desktop->dirty_count; ++i) {
+        if (desktop->dirty[i][0] <= x1 && desktop->dirty[i][1] <= y1 &&
+            desktop->dirty[i][2] >= x2 && desktop->dirty[i][3] >= y2)
+            return;
+    }
+
+    for (i = 0; i < desktop->frame_count; ++i) {
+        if (desktop->frames[i][0] == x1 && desktop->frames[i][1] == y1 &&
+            desktop->frames[i][2] == x2 && desktop->frames[i][3] == y2)
+            return;
+    }
+
+    /* No room for another frame: it becomes a rectangle, which can merge. */
+    if (desktop->frame_count >= TUI_FRAME_MAX) {
+        tui_dirty_add(desktop, x1, y1, x2, y2);
+        return;
+    }
+
+    desktop->frames[desktop->frame_count][0] = x1;
+    desktop->frames[desktop->frame_count][1] = y1;
+    desktop->frames[desktop->frame_count][2] = x2;
+    desktop->frames[desktop->frame_count][3] = y2;
+    ++desktop->frame_count;
+}
+
 void tui_invalidate_all(TuiDesktop *desktop)
 {
     ++desktop->dirty_serial;
@@ -921,7 +989,7 @@ void tui_draw_pending(TuiDesktop *desktop)
         return;
     }
 
-    if (desktop->dirty_count == 0)
+    if (desktop->dirty_count == 0 && desktop->frame_count == 0)
         return;
 
     tui_draw_begin(desktop);
@@ -931,7 +999,24 @@ void tui_draw_pending(TuiDesktop *desktop)
                         desktop->dirty[i][0], desktop->dirty[i][1],
                         desktop->dirty[i][2], desktop->dirty[i][3]);
 
+    /* A frame is its four strips: top, bottom, and the sides between them. */
+    for (i = 0; i < desktop->frame_count; ++i) {
+        tui_draw_region(desktop,
+                        desktop->frames[i][0], desktop->frames[i][1],
+                        desktop->frames[i][2], desktop->frames[i][1] + 1);
+        tui_draw_region(desktop,
+                        desktop->frames[i][0], desktop->frames[i][3] - 1,
+                        desktop->frames[i][2], desktop->frames[i][3]);
+        tui_draw_region(desktop,
+                        desktop->frames[i][0], desktop->frames[i][1] + 1,
+                        desktop->frames[i][0] + 1, desktop->frames[i][3] - 1);
+        tui_draw_region(desktop,
+                        desktop->frames[i][2] - 1, desktop->frames[i][1] + 1,
+                        desktop->frames[i][2], desktop->frames[i][3] - 1);
+    }
+
     desktop->dirty_count = 0;
+    desktop->frame_count = 0;
 
     tui_draw_end(desktop);
 }

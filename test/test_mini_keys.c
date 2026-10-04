@@ -582,31 +582,97 @@ static void test_pending_many_changes_merge(void)
     CHECK(pending_equals_full(&desktop));
 }
 
-/* Only the frame of a window changes with its flags: four thin strips, no more. */
+/* The flags of a window only change its frame: one entry of the frame list. */
 static void test_pending_frame_only(void)
 {
     Scene s;
-    int i;
-    int cells;
+    Screen before;
+    Screen after;
+    int x, y;
     int x1, y1, x2, y2;
+    int inside_untouched;
+
+    scene_build(&s);
+    tui_draw(&s.desktop);
+    screen_save(&before);
+
+    tui_window_add_flags(&s.left, TUI_WINDOW_ACTIVE_DOUBLE);
+    CHECK(!s.desktop.dirty_all);
+    CHECK(s.desktop.dirty_count == 0);
+    CHECK(s.desktop.frame_count == 1);
+
+    tui_draw_pending(&s.desktop);
+    screen_save(&after);
+
+    /* The inside of the window (the edit, the background) was not rewritten. */
+    tui_control_rect(&s.left.control, &x1, &y1, &x2, &y2);
+    inside_untouched = 1;
+    for (y = y1 + 1; y < y2 - 1; ++y)
+        for (x = x1 + 1; x < x2 - 1; ++x)
+            if (after.chars[y][x] != before.chars[y][x] ||
+                after.attrs[y][x] != before.attrs[y][x])
+                inside_untouched = 0;
+    CHECK(inside_untouched);
+
+    CHECK(pending_equals_full(&s.desktop));
+}
+
+/* Moving the focus to another window: two controls and two frames, four entries. */
+static void test_pending_focus_across_windows_uses_four_entries(void)
+{
+    Scene s;
 
     scene_build(&s);
     tui_draw(&s.desktop);
 
-    tui_window_add_flags(&s.left, TUI_WINDOW_ACTIVE_DOUBLE);
+    tui_desktop_set_focus(&s.desktop, &s.edit_right.control);
+    CHECK(s.desktop.dirty_count == 2);
+    CHECK(s.desktop.frame_count == 2);
     CHECK(!s.desktop.dirty_all);
-    CHECK(s.desktop.dirty_count == 4);
-
-    /* The ring is far smaller than the window it surrounds. */
-    cells = 0;
-    for (i = 0; i < s.desktop.dirty_count; ++i)
-        cells += (s.desktop.dirty[i][2] - s.desktop.dirty[i][0]) *
-                 (s.desktop.dirty[i][3] - s.desktop.dirty[i][1]);
-    tui_control_rect(&s.left.control, &x1, &y1, &x2, &y2);
-    CHECK(cells == 2 * (x2 - x1) + 2 * (y2 - y1 - 2));
-    CHECK(cells < (x2 - x1) * (y2 - y1));
-
     CHECK(pending_equals_full(&s.desktop));
+}
+
+/* A rectangle over a frame absorbs it; a frame inside a rectangle is not listed. */
+static void test_pending_frames_and_rectangles_absorb_each_other(void)
+{
+    Scene s;
+
+    scene_build(&s);
+    tui_draw(&s.desktop);
+
+    tui_invalidate_frame(&s.left.control);
+    tui_invalidate_frame(&s.left.control);              /* the same frame twice */
+    CHECK(s.desktop.frame_count == 1);
+    tui_invalidate(&s.left.control);
+    CHECK(s.desktop.frame_count == 0);
+    CHECK(s.desktop.dirty_count == 1);
+
+    tui_invalidate_frame(&s.left.control);              /* already inside a rectangle */
+    CHECK(s.desktop.frame_count == 0);
+    CHECK(pending_equals_full(&s.desktop));
+}
+
+/* More frames than the list holds: the extra ones become rectangles. */
+static void test_pending_many_frames_overflow_to_rectangles(void)
+{
+    TuiDesktop desktop;
+    TuiWindow windows[TUI_FRAME_MAX + 4];
+    int i;
+
+    test_init_desktop(&desktop);
+    for (i = 0; i < TUI_FRAME_MAX + 4; ++i) {
+        tui_window_init(&windows[i], 2 + (i % 6) * 12, 1 + (i / 6) * 8, 10, 6, "w");
+        tui_add(&desktop.control, &windows[i].control);
+    }
+    tui_draw(&desktop);
+
+    for (i = 0; i < TUI_FRAME_MAX + 4; ++i)
+        tui_window_add_flags(&windows[i], TUI_WINDOW_ACTIVE_DOUBLE);
+
+    CHECK(desktop.frame_count == TUI_FRAME_MAX);
+    CHECK(desktop.dirty_count == 4);
+    CHECK(!desktop.dirty_all);
+    CHECK(pending_equals_full(&desktop));
 }
 
 /* A rectangle that covers earlier ones takes their place. */
@@ -687,6 +753,12 @@ void test_mini_keys_suite(void)
     test_run_case("pending redraw: many changes merge",
                   test_pending_many_changes_merge);
     test_run_case("pending redraw: frame only", test_pending_frame_only);
+    test_run_case("pending redraw: focus across windows uses four entries",
+                  test_pending_focus_across_windows_uses_four_entries);
+    test_run_case("pending redraw: frames and rectangles absorb each other",
+                  test_pending_frames_and_rectangles_absorb_each_other);
+    test_run_case("pending redraw: frame list overflow becomes rectangles",
+                  test_pending_many_frames_overflow_to_rectangles);
     test_run_case("pending redraw: a big rectangle absorbs small ones",
                   test_pending_big_rectangle_absorbs_small_ones);
     test_run_case("pending redraw: combo opened from another window",

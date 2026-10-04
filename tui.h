@@ -201,6 +201,12 @@ struct TuiControl {
 #define TUI_DIRTY_MAX 16
 
 /*
+ * Frames whose outer ring of cells is pending (see tui_invalidate_frame). One
+ * entry per frame instead of four rectangles; they are expanded when drawing.
+ */
+#define TUI_FRAME_MAX 8
+
+/*
  * Desktop
  *
  * Root of the complete UI.
@@ -229,6 +235,10 @@ struct TuiDesktop {
     int dirty_all;
     int dirty_count;
     int dirty[TUI_DIRTY_MAX][4];
+
+    /* Rectangles (same layout) whose border ring, and only it, is pending. */
+    int frame_count;
+    int frames[TUI_FRAME_MAX][4];
 
     /* Counts every invalidation, so tui_dispatch() can tell if one happened. */
     int dirty_serial;
