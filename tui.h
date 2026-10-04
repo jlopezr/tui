@@ -198,7 +198,7 @@ struct TuiControl {
  * the rectangle that grows the least, so a burst of changes repaints a bit more
  * than needed instead of the whole screen.
  */
-#define TUI_DIRTY_MAX 12
+#define TUI_DIRTY_MAX 16
 
 /*
  * Desktop
