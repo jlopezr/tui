@@ -56,6 +56,7 @@ static int checkbox_toggle(TuiCheckBox *checkbox,
                            TuiEvent *event)
 {
     checkbox->checked = !checkbox->checked;
+    tui_invalidate(control);
 
     if (checkbox->command == TUI_CMD_NONE)
         return 1;
@@ -99,8 +100,7 @@ void tui_checkbox_init(TuiCheckBox *checkbox,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP |
-                     TUI_LOCAL);
+                     TUI_TABSTOP);
 
     checkbox->text = text;
     checkbox->checked = 0;
@@ -109,8 +109,10 @@ void tui_checkbox_init(TuiCheckBox *checkbox,
 
 void tui_checkbox_set_checked(TuiCheckBox *checkbox, int checked)
 {
-    if (checkbox != 0)
+    if (checkbox != 0 && checkbox->checked != (checked != 0)) {
         checkbox->checked = checked != 0;
+        tui_invalidate(&checkbox->control);
+    }
 }
 
 int tui_checkbox_get_checked(TuiCheckBox *checkbox)

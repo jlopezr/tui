@@ -266,32 +266,46 @@ serie.
 
 Probar sin placa: `nmake /f Makefile.msvc mini-sim-input`.
 
-#### Por qué importa el redibujado parcial
+#### Redibujado por invalidación
 
 `tui_draw()` reescribe las 2400 celdas, y en la MiniCPU cuesta ~1,3 millones de
 instrucciones (casi 0,4 s: mide la placa con `CYCLES`/`RETIRED`; el 74 % son
 esperas de memoria, no de MMIO). Con teclado y ratón cada evento lo disparaba y
-la demo iba a ~3 eventos por segundo. Ahora:
+la demo iba a ~3 eventos por segundo. Ahora los controles dicen qué cambian y el
+escritorio repinta solo eso, como el `InvalidateRect` de Windows:
 
-- un **movimiento de ratón** que nadie gestiona no redibuja nada (1 ms);
-- una **tecla** que nadie gestiona tampoco redibuja nada;
-- una **tecla o un clic** gestionado por un control redibuja solo su rectángulo
-  y la barra de estado (`tui_draw_begin` / `tui_draw_region` / `tui_draw_end`;
-  el núcleo se salta los controles que no tocan la región, y lo que haya encima
-  se vuelve a pintar, así que el solape no importa). Eso vale para los controles
-  marcados `TUI_LOCAL` (Edit, TextArea, Editor, ListBox, Button, CheckBox: lo que
-  hacen se ve dentro de su rectángulo); `tui_redraw_owner()` da el control a
-  repintar y, si no hay ninguno, su ventana. Unos 17 ms con un cuadro de texto;
-- cambiar el **foco** (TAB, clic) repinta el control que lo pierde y el que lo
-  gana, y las dos ventanas si son distintas;
-- un **comando** que solo cambia la barra de estado no obliga a repintar todo;
-- lo demás —menús, atajos, abrir o cerrar la lista de un combo (añade o quita una
-  ventana), cambiar de demo— sigue siendo redibujado completo, unos 260 ms.
+```c
+tui_dispatch(&desktop, &event);
+tui_draw_pending(&desktop);       /* en vez de tui_draw() */
+```
 
-`tui_dispatch` deja en `desktop->last_handler` el control que gestionó la tecla
-(0 si fue un atajo global, TAB o el ratón); `tui_window_of()` da su ventana.
-`tui_draw()` no cambia. `tui_fill` y `tui_text` recortan el rectángulo una vez
-en vez de celda a celda.
+- **`tui_invalidate(control)`** y `tui_invalidate_rect()` (en coordenadas del
+  control) marcan un rectángulo como sucio. El escritorio recuerda hasta
+  `TUI_DIRTY_MAX` rectángulos; con más, el siguiente dibujo es completo.
+- **Cada control invalida lo suyo**: Edit, TextArea, Editor, ListBox, CheckBox,
+  RadioButton (y los hermanos que desmarca), ComboBox, ScrollBar, Label y
+  StatusBar, tanto al gestionar un evento como en sus `set_*`. Añadir
+  (`tui_add`), quitar (`tui_remove`) y subir al frente una ventana, mover una
+  ventana y cambiar el foco (el control que lo pierde, el que lo gana y los marcos
+  de las dos ventanas) invalidan solos.
+- **`tui_event_done(control)`** dice «lo gestioné y no cambió nada visible» (un
+  clic sobre un botón, un movimiento sobre una lista desplegada).
+- **Un evento gestionado sin ninguna invalidación se toma como «puede haber
+  cambiado cualquier cosa»** y `tui_dispatch` invalida la pantalla entera. Así un
+  control que no sabe de esto (o uno nuevo) sigue siendo correcto, solo más lento:
+  hoy lo son los menús.
+- Un evento que **nadie gestiona** no invalida nada: un movimiento de ratón sobre
+  el fondo o una tecla sin dueño cuestan 0.
+- Lo que haya **encima** de un rectángulo sucio se vuelve a pintar con él
+  (`tui_draw_begin` / `tui_draw_region` / `tui_draw_end` recorren el árbol en
+  orden y se saltan lo que no toca la región), así que el solape no importa.
+
+Medido en la placa (ms, con ida y vuelta por el puerto serie): letra en un
+cuadro de texto ~17; espacio en checkbox, radio o botón ~10–30; flecha en una
+lista 10–48; TAB entre controles 18–108 (repinta los dos controles y los marcos);
+abrir o cerrar la lista de un combo ~55–70; ratón sobre una lista desplegada 2–4;
+redibujado completo ~256. `tui_draw()` no cambia. `tui_fill` y `tui_text` recortan
+el rectángulo una vez en vez de celda a celda.
 
 **Trampa de `mini-lcc`**: `(unsigned char)x` sobre un `int` no enmascara. Un
 carácter ≥128 leído de un buffer de `char` llega con el signo extendido

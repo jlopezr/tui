@@ -292,6 +292,10 @@ static int textarea_scroll_event(TuiControl *control, TuiEvent *event)
             area->top_line = tui_scrollbar_get_value(&area->vscroll);
         else
             area->left_col = tui_scrollbar_get_value(&area->hscroll);
+
+        /* The viewport moved: the text has to be drawn again. */
+        if (handled)
+            tui_invalidate(&area->control);
     }
 
     return handled;
@@ -327,8 +331,7 @@ void tui_textarea_init(TuiTextArea *area,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP |
-                     TUI_LOCAL);
+                     TUI_TABSTOP);
 
     area->text = capacity > 0 ? buffer : 0;
     area->capacity = area->text != 0 ? capacity : 0;
@@ -356,6 +359,8 @@ void tui_textarea_set_text(TuiTextArea *area, const char *text)
 
     if (area == 0 || area->text == 0)
         return;
+
+    tui_invalidate(&area->control);
 
     i = 0;
 
@@ -564,7 +569,22 @@ static int textarea_mouse(TuiTextArea *area, TuiEvent *event)
     return 1;
 }
 
+static int textarea_handle(TuiControl *control, TuiEvent *event);
+
+/* Whatever the control handled may have changed what it shows. */
 static int textarea_event(TuiControl *control, TuiEvent *event)
+{
+    int handled;
+
+    handled = textarea_handle(control, event);
+
+    if (handled)
+        tui_invalidate(control);
+
+    return handled;
+}
+
+static int textarea_handle(TuiControl *control, TuiEvent *event)
 {
     TuiTextArea *area;
     int handled;

@@ -35,13 +35,6 @@ typedef struct TuiScrollBar TuiScrollBar;
 #define TUI_TABSTOP       0x0008
 #define TUI_GLOBAL        0x0010
 
-/*
- * Whatever the control does with a key shows up inside its own rectangle (plus
- * the status bar): no popups, no siblings changed. The application may then
- * redraw just that rectangle after the control handled a key.
- */
-#define TUI_LOCAL         0x0020
-
 
 /*
  * Event types
@@ -201,6 +194,12 @@ struct TuiControl {
 
 
 /*
+ * Rectangles remembered between two draws. More than this, and the next
+ * draw is the whole screen.
+ */
+#define TUI_DIRTY_MAX 12
+
+/*
  * Desktop
  *
  * Root of the complete UI.
@@ -222,11 +221,16 @@ struct TuiDesktop {
     int cursor_y;
 
     /*
-     * Control that handled the last key or mouse event (0 if none, or if it
-     * was handled by a global control or TAB navigation). Lets an
-     * application redraw only the part of the screen that can have changed.
+     * Screen rectangles that changed since the last draw (x1, y1 inclusive,
+     * x2, y2 exclusive), or the whole screen. Filled by tui_invalidate() and
+     * friends, consumed by tui_draw_pending().
      */
-    TuiControl *last_handler;
+    int dirty_all;
+    int dirty_count;
+    int dirty[TUI_DIRTY_MAX][4];
+
+    /* Counts every invalidation, so tui_dispatch() can tell if one happened. */
+    int dirty_serial;
 
     /* Set while tui_draw_region() works: controls outside it are skipped. */
     int partial_draw;
@@ -410,10 +414,29 @@ void tui_draw_end(TuiDesktop *desktop);
 TuiControl *tui_window_of(TuiControl *control);
 
 /*
- * What to repaint after 'control' reacted: the nearest ancestor (or itself)
- * marked TUI_LOCAL, else its window, else 0 (repaint everything).
+ * Invalidation. Instead of redrawing everything after each event, controls
+ * say what they changed and tui_draw_pending() repaints just that:
+ *
+ *     tui_dispatch(desktop, &event);
+ *     tui_draw_pending(desktop);
+ *
+ * A control calls tui_invalidate() (or the _rect variant, in its own
+ * coordinates) whenever something it shows changes. Adding, removing and raising
+ * a control, and moving the focus, invalidate by themselves. Anything stacked on
+ * top of an invalid rectangle is drawn again with it, so overlap is not a concern.
+ *
+ * tui_dispatch() treats an event that was handled without any invalidation as
+ * "could be anything" and invalidates the whole screen, so a control that does
+ * not know about this stays correct, only slower. A control that handled an event
+ * and really changed nothing says so with tui_event_done().
  */
-TuiControl *tui_redraw_owner(TuiControl *control);
+void tui_invalidate(TuiControl *control);
+void tui_invalidate_rect(TuiControl *control, int x, int y, int width, int height);
+void tui_invalidate_all(TuiDesktop *desktop);
+void tui_event_done(TuiControl *control);
+
+/* Repaint what was invalidated since the last draw. Draws nothing if nothing was. */
+void tui_draw_pending(TuiDesktop *desktop);
 
 /* Screen rectangle of a control: x1,y1 inclusive, x2,y2 exclusive. */
 void tui_control_rect(TuiControl *control,

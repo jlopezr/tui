@@ -749,247 +749,11 @@ static TuiStatusItem status_items[] = {
     { "Run",  TUI_KEY_F5, CMD_RUN   }
 };
 
-/*
- * What the main loop has to redraw before waiting for the next event.
- *
- * A full redraw rewrites the whole screen, which costs over a million
- * instructions on the MiniCPU -- a third of a second per keystroke. Most events
- * change very little, so the loop asks for the least that is still correct.
- */
-#define REDRAW_NONE     0
-#define REDRAW_AREAS    1
-#define REDRAW_FULL     2
-
-#define MAX_AREAS       4
-
-/* Controls whose rectangle has to be drawn again (see tui_redraw_owner). */
-typedef struct {
-    TuiControl *area[MAX_AREAS];
-    int count;
-} Areas;
-
-/* Returns 0 when there is nothing sensible to add: then draw everything. */
-static int areas_add(Areas *areas, TuiControl *control)
-{
-    int i;
-
-    if (control == 0)
-        return 0;
-
-    for (i = 0; i < areas->count; ++i) {
-        if (areas->area[i] == control)
-            return 1;
-    }
-
-    if (areas->count >= MAX_AREAS)
-        return 0;
-
-    areas->area[areas->count] = control;
-    ++areas->count;
-
-    return 1;
-}
-
-/* A command that only changes the status bar and the control that sent it. */
-static int command_is_light(int command)
-{
-    int i;
-
-    if (command == CMD_QUIT ||
-        command == CMD_DEMO_CONTROLS ||
-        command == CMD_DEMO_LAYOUT ||
-        command == CMD_DEMO_EDITOR)
-        return 0;
-
-    if (command == CMD_EDITOR_STATE)
-        return 1;
-
-    for (i = 0; i < COMMAND_COUNT; ++i) {
-        if (command_table[i].command == command)
-            return 1;
-    }
-
-    return 0;
-}
-
-/*
- * The drop-down window of the combo box that holds the mouse capture, or 0.
- * While it is open nothing but that window changes (hovering, arrows, scrolling);
- * the combo box itself only changes when it closes, which alters the window tree.
- */
-static TuiControl *demo_open_popup(App *app)
-{
-    TuiComboBox *combos[2];
-    int i;
-
-    combos[0] = &app->optimization_combo;
-    combos[1] = &app->scroll_combo;
-
-    for (i = 0; i < 2; ++i) {
-        if (combos[i]->open &&
-            app->desktop.capture == &combos[i]->control &&
-            combos[i]->popup_window.control.parent != 0)
-            return &combos[i]->popup_window.control;
-    }
-
-    return 0;
-}
-
-/*
- * Did this event just open or close the drop-down list of a combo box? If so,
- * add what has to be repainted: the list's rectangle (still stored in the
- * window after it is removed), the combo itself and, when closing made a command,
- * its whole window, since the command may touch its neighbours. Returns 0 for
- * any other change of the window tree.
- */
-static int demo_combo_toggled(App *app, const TuiEvent *event,
-                              TuiControl *old_top, Areas *areas)
-{
-    TuiComboBox *combos[2];
-    TuiControl *popup;
-    TuiControl *top;
-    int i;
-    int opened;
-    int closed;
-
-    combos[0] = &app->optimization_combo;
-    combos[1] = &app->scroll_combo;
-    top = app->desktop.control.last;
-
-    for (i = 0; i < 2; ++i) {
-        popup = &combos[i]->popup_window.control;
-        opened = combos[i]->open && top == popup && old_top != popup;
-        closed = !combos[i]->open && old_top == popup && top != popup;
-
-        if (!opened && !closed)
-            continue;
-
-        if (!areas_add(areas, popup) ||
-            !areas_add(areas, &combos[i]->control))
-            return 0;
-
-        if (event->type == TUI_EV_COMMAND &&
-            !areas_add(areas, tui_window_of(&combos[i]->control)))
-            return 0;
-
-        return 1;
-    }
-
-    return 0;
-}
-
-/* 1 while the open drop-down list has its scroll bar being dragged. */
-static int demo_popup_dragging(App *app)
-{
-    return (app->optimization_combo.open &&
-            app->optimization_combo.popup_list.scrollbar.dragging) ||
-           (app->scroll_combo.open &&
-            app->scroll_combo.popup_list.scrollbar.dragging);
-}
-
-/*
- * Work out what a handled event changed. Returns 0 when the answer is "could be
- * anything", and the caller repaints the whole screen.
- *
- * Cheap cases: the control that took the event, plus the control that lost the
- * focus and the one that got it (both draw their focus), plus the status bar,
- * which the caller always adds. Anything stacked on top of those rectangles is
- * drawn again by the region walk, so overlap is not a concern.
- */
-static int demo_plan(App *app, const TuiEvent *event, int no_handler_ok,
-                     TuiControl *old_focus, TuiControl *old_top,
-                     Areas *areas)
-{
-    TuiControl *new_focus;
-    TuiControl *handler;
-
-    areas->count = 0;
-
-    if (app->desktop.control.last != old_top) {
-        /*
-         * A window came or went. The only ones we know are the drop-down lists
-         * of the combo boxes: they change their own rectangle and the combo.
-         */
-        if (!demo_combo_toggled(app, event, old_top, areas))
-            return 0;
-    } else if (demo_open_popup(app) != 0) {
-        /* A drop-down list stays open: only the list itself can have changed. */
-        return areas_add(areas, demo_open_popup(app));
-    } else {
-        handler = app->desktop.last_handler;
-
-        if (event->type == TUI_EV_COMMAND &&
-            (handler == 0 || !command_is_light(event->command)))
-            return 0;
-
-        if (handler != 0) {
-            if (!areas_add(areas, tui_redraw_owner(handler)))
-                return 0;
-        } else if (!no_handler_ok) {
-            /* Shortcuts and menus: only TAB and a click nobody wanted. */
-            return 0;
-        }
-    }
-
-    new_focus = tui_desktop_get_focus(&app->desktop);
-
-    if (new_focus != old_focus) {
-        /* The active window draws its frame differently. */
-        if (tui_window_of(old_focus) != tui_window_of(new_focus)) {
-            if (old_focus != 0 &&
-                !areas_add(areas, tui_window_of(old_focus)))
-                return 0;
-            if (new_focus != 0 &&
-                !areas_add(areas, tui_window_of(new_focus)))
-                return 0;
-        }
-
-        if (old_focus != 0 &&
-            !areas_add(areas, tui_redraw_owner(old_focus)))
-            return 0;
-        if (new_focus != 0 &&
-            !areas_add(areas, tui_redraw_owner(new_focus)))
-            return 0;
-    }
-
-    return 1;
-}
-
-/* Redraw the areas and the status bar, which most events update. */
-static void demo_draw_areas(App *app, const Areas *areas)
-{
-    int i;
-    int x1;
-    int y1;
-    int x2;
-    int y2;
-
-    tui_draw_begin(&app->desktop);
-
-    for (i = 0; i < areas->count; ++i) {
-        tui_control_rect(areas->area[i], &x1, &y1, &x2, &y2);
-        tui_draw_region(&app->desktop, x1, y1, x2, y2);
-    }
-
-    tui_control_rect(&app->status_bar.control, &x1, &y1, &x2, &y2);
-    tui_draw_region(&app->desktop, x1, y1, x2, y2);
-
-    tui_draw_end(&app->desktop);
-}
-
 int main(void)
 {
     /* Static: ~15 KB, bigger than the 8 KB stack of the MiniCPU start-up code. */
     static App app;
-    static Areas areas;
     TuiEvent event;
-    int redraw;
-    int handled;
-    int was_tab;
-    int had_capture;
-    int had_popup;
-    TuiControl *old_focus;
-    TuiControl *old_top;
 
     if (!tui_init())
         return 1;
@@ -1011,60 +775,22 @@ int main(void)
 
     app.running = 1;
 
-    redraw = REDRAW_FULL;
-
     while (app.running) {
-        if (redraw == REDRAW_FULL)
-            tui_draw(&app.desktop);
-        else if (redraw == REDRAW_AREAS)
-            demo_draw_areas(&app, &areas);
+        /*
+         * Controls report what they change, so this repaints just that: the
+         * whole screen costs over a million instructions on the MiniCPU, a
+         * third of a second, which is far too slow to do after every key.
+         */
+        tui_draw_pending(&app.desktop);
         tui_read_event(&event);
-        redraw = REDRAW_FULL;
+
         if (event.type == TUI_EV_KEY &&
             event.key == TUI_KEY_ESCAPE &&
             app.desktop.capture == 0) {
             app.running = 0;
         } else {
             note_control_event(&app, &event);
-
-            old_focus = tui_desktop_get_focus(&app.desktop);
-            old_top = app.desktop.control.last;
-            had_capture = app.desktop.capture != 0;
-            had_popup = demo_open_popup(&app) != 0;
-            was_tab = event.type == TUI_EV_KEY && event.key == TUI_KEY_TAB &&
-                      !had_capture;
-
-            handled = tui_dispatch(&app.desktop, &event);
-
-            if (event.type == TUI_EV_MOUSE &&
-                event.mouse_action == TUI_MOUSE_MOVE &&
-                had_popup && demo_open_popup(&app) != 0 &&
-                !demo_popup_dragging(&app)) {
-                /* The open list swallows the move, but nothing in it reacts. */
-                redraw = REDRAW_NONE;
-            } else if (!handled) {
-                /*
-                 * Nothing reacted. A key or a mouse move over nothing changes
-                 * nothing on screen (the pointer is the console's business).
-                 * Other mouse events (the release of a click on a list, a click
-                 * on the bare background of a window) can still move the focus;
-                 * the plan covers that.
-                 */
-                if (event.type == TUI_EV_KEY ||
-                    (event.type == TUI_EV_MOUSE &&
-                     event.mouse_action == TUI_MOUSE_MOVE &&
-                     (!had_capture || had_popup)))
-                    redraw = REDRAW_NONE;
-                else if (event.type == TUI_EV_MOUSE &&
-                         (!had_capture || had_popup) &&
-                         (app.desktop.capture == 0 || demo_open_popup(&app) != 0) &&
-                         demo_plan(&app, &event, 1, old_focus, old_top,
-                                   &areas))
-                    redraw = REDRAW_AREAS;
-            } else if (demo_plan(&app, &event, was_tab, old_focus, old_top,
-                                 &areas)) {
-                redraw = REDRAW_AREAS;
-            }
+            tui_dispatch(&app.desktop, &event);
         }
 
         if (event.type == TUI_EV_COMMAND)

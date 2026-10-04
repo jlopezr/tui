@@ -97,6 +97,8 @@ static void combobox_close(TuiComboBox *combo, int commit,
         tui_desktop_set_focus(desktop, &combo->control);
     }
 
+    tui_invalidate(&combo->control);
+
     if (commit &&
         changed &&
         combo->selected != combo->original_selected &&
@@ -196,6 +198,7 @@ static int combobox_open(TuiComboBox *combo)
     tui_add(&desktop->control, &combo->popup_window.control);
     tui_desktop_set_capture(desktop, &combo->control);
     tui_desktop_set_focus(desktop, &combo->control);
+    tui_invalidate(&combo->control);
 
     return 1;
 }
@@ -257,7 +260,26 @@ static int combobox_popup_mouse(TuiComboBox *combo,
     return 1;
 }
 
+static int combobox_handle(TuiControl *control, TuiEvent *event);
+
+/*
+ * Handled events count as reported even when nothing here changed (a press
+ * on a button, a mouse move over an open list): the controls that did change
+ * something have invalidated it themselves.
+ */
 static int combobox_event(TuiControl *control, TuiEvent *event)
+{
+    int handled;
+
+    handled = combobox_handle(control, event);
+
+    if (handled)
+        tui_event_done(control);
+
+    return handled;
+}
+
+static int combobox_handle(TuiControl *control, TuiEvent *event)
 {
     TuiComboBox *combo;
     TuiDesktop *desktop;
@@ -383,6 +405,8 @@ void tui_combobox_set_items(TuiComboBox *combo,
         combo->count = count;
         combo->selected = 0;
     }
+
+    tui_invalidate(&combo->control);
 }
 
 int tui_combobox_get_selected(TuiComboBox *combo)
@@ -406,6 +430,7 @@ void tui_combobox_set_selected(TuiComboBox *combo, int index)
         index = combo->count - 1;
 
     combo->selected = index;
+    tui_invalidate(&combo->control);
 
     if (combo->open)
         tui_listbox_set_selected(&combo->popup_list, index);

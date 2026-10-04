@@ -188,8 +188,13 @@ static void window_drag_to(TuiControl *control,
         }
     }
 
+    /* Old place and new place. */
+    tui_invalidate(control);
+
     control->x = sx - px;
     control->y = sy - py;
+
+    tui_invalidate(control);
 }
 
 static void window_cancel_drag(TuiWindow *window, TuiDesktop *desktop)
@@ -200,7 +205,22 @@ static void window_cancel_drag(TuiWindow *window, TuiDesktop *desktop)
         tui_desktop_clear_capture(desktop);
 }
 
+static int window_handle(TuiControl *control, TuiEvent *event);
+
+/* Starting or ending a drag changes nothing on screen; moving does (above). */
 static int window_event(TuiControl *control, TuiEvent *event)
+{
+    int handled;
+
+    handled = window_handle(control, event);
+
+    if (handled)
+        tui_event_done(control);
+
+    return handled;
+}
+
+static int window_handle(TuiControl *control, TuiEvent *event)
 {
     TuiWindow *window;
     TuiDesktop *desktop;
@@ -284,6 +304,7 @@ void tui_window_set_flags(TuiWindow *window, unsigned flags)
     TuiDesktop *desktop;
 
     window->flags = flags;
+    tui_invalidate(&window->control);
 
     if (window->dragging && (flags & TUI_WINDOW_FIXED)) {
         desktop = tui_find_desktop(&window->control);

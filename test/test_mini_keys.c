@@ -2,6 +2,7 @@
 
 #include "test_support.h"
 #include "../mini_keys.h"
+#include "../tui_internal.h"
 
 /* Usage IDs fisicos que usan las pruebas. */
 #define U_A       0x04
@@ -329,137 +330,249 @@ static void scene_build(Scene *s)
     tui_desktop_set_focus(&s->desktop, &s->edit_left.control);
 }
 
-static void test_partial_redraw_matches_full(void)
+/*
+ * Invalidation: controls report what they changed and tui_draw_pending()
+ * repaints only that. The screen must come out identical to a full redraw.
+ */
+static int pending_equals_full(TuiDesktop *desktop)
 {
-    Scene full;
-    Scene part;
+    Screen after_pending;
     Screen after_full;
-    Screen after_partial;
+
+    tui_draw_pending(desktop);
+    screen_save(&after_pending);
+    tui_draw(desktop);
+    screen_save(&after_full);
+
+    return screens_equal(&after_pending, &after_full);
+}
+
+static void test_pending_typing_under_overlap(void)
+{
+    Scene s;
+    TuiWindow over;
     Screen before;
+    Screen after;
     int x1, y1, x2, y2;
     int x, y;
     int outside_untouched;
 
-    /* Reference: type, then redraw everything. */
-    scene_build(&full);
-    tui_draw(&full.desktop);
-    test_key(&full.desktop, 'h');
-    test_key(&full.desktop, 'i');
-    tui_draw(&full.desktop);
-    screen_save(&after_full);
+    scene_build(&s);
 
-    /* Same keys, but redraw only the window that handled them. */
-    scene_build(&part);
-    tui_draw(&part.desktop);
+    /* A window stacked over part of the edit that is about to change. */
+    tui_window_init(&over, 8, 2, 10, 3, "Over");
+    tui_add(&s.desktop.control, &over.control);
+
+    tui_draw(&s.desktop);
     screen_save(&before);
-    test_key(&part.desktop, 'h');
-    CHECK(part.desktop.last_handler == &part.edit_left.control);
-    test_key(&part.desktop, 'i');
-    CHECK(tui_window_of(part.desktop.last_handler) == &part.left.control);
 
-    tui_control_rect(&part.left.control, &x1, &y1, &x2, &y2);
-    tui_draw_begin(&part.desktop);
-    tui_draw_region(&part.desktop, x1, y1, x2, y2);
-    tui_draw_end(&part.desktop);
-    screen_save(&after_partial);
+    test_key(&s.desktop, 'h');
+    test_key(&s.desktop, 'i');
 
-    CHECK(screens_equal(&after_full, &after_partial));
+    CHECK(!s.desktop.dirty_all);
+    CHECK(s.desktop.dirty_count > 0);
 
-    /* And it really was partial: nothing outside the window was rewritten. */
+    tui_draw_pending(&s.desktop);
+    screen_save(&after);
+
+    /* The window covers the typed text but is drawn again on top of it. */
+    CHECK(pending_equals_full(&s.desktop));
+
+    /* And it really was partial: nothing outside the edit changed. */
+    tui_control_rect(&s.edit_left.control, &x1, &y1, &x2, &y2);
     outside_untouched = 1;
     for (y = 0; y < TEST_HEIGHT; ++y)
         for (x = 0; x < TEST_WIDTH; ++x)
             if ((x < x1 || x >= x2 || y < y1 || y >= y2) &&
-                (after_partial.chars[y][x] != before.chars[y][x] ||
-                 after_partial.attrs[y][x] != before.attrs[y][x]))
+                (after.chars[y][x] != before.chars[y][x] ||
+                 after.attrs[y][x] != before.attrs[y][x]))
                 outside_untouched = 0;
     CHECK(outside_untouched);
 
-    /* The cursor follows the edit, which was inside the region. */
-    CHECK(part.desktop.cursor_visible);
+    /* The cursor follows the edit. */
+    CHECK(s.desktop.cursor_visible);
 }
 
-/* Redraw only the handling control, with a window stacked over part of it. */
-static void test_control_redraw_matches_full_with_overlap(void)
-{
-    Scene full;
-    Scene part;
-    TuiWindow over_full;
-    TuiWindow over_part;
-    Screen after_full;
-    Screen after_partial;
-    int x1, y1, x2, y2;
-
-    scene_build(&full);
-    tui_window_init(&over_full, 8, 2, 10, 3, "Over");
-    tui_add(&full.desktop.control, &over_full.control);
-    tui_draw(&full.desktop);
-    test_key(&full.desktop, 'h');
-    test_key(&full.desktop, 'i');
-    tui_draw(&full.desktop);
-    screen_save(&after_full);
-
-    scene_build(&part);
-    tui_window_init(&over_part, 8, 2, 10, 3, "Over");
-    tui_add(&part.desktop.control, &over_part.control);
-    tui_draw(&part.desktop);
-    test_key(&part.desktop, 'h');
-    test_key(&part.desktop, 'i');
-    CHECK(part.desktop.last_handler == &part.edit_left.control);
-    CHECK((part.edit_left.control.flags & TUI_LOCAL) != 0);
-
-    tui_control_rect(part.desktop.last_handler, &x1, &y1, &x2, &y2);
-    tui_draw_begin(&part.desktop);
-    tui_draw_region(&part.desktop, x1, y1, x2, y2);
-    tui_draw_end(&part.desktop);
-    screen_save(&after_partial);
-
-    CHECK(screens_equal(&after_full, &after_partial));
-}
-
-static void test_redraw_owner(void)
+static void test_pending_focus_and_tree_changes(void)
 {
     Scene s;
+    int i;
 
     scene_build(&s);
+    tui_draw(&s.desktop);
 
-    /* A TUI_LOCAL control is its own owner; a bare label falls back to its window. */
-    CHECK(tui_redraw_owner(&s.edit_left.control) == &s.edit_left.control);
-    CHECK(tui_redraw_owner(&s.left.control) == &s.left.control);
-    CHECK(tui_redraw_owner(&s.label.control) == 0);
+    /* Moving the focus around, across windows: both ends repaint. */
+    for (i = 0; i < 4; ++i) {
+        test_key(&s.desktop, TUI_KEY_TAB);
+        CHECK(!s.desktop.dirty_all);
+        CHECK(pending_equals_full(&s.desktop));
+    }
 
-    tui_remove(&s.label.control);
-    tui_add(&s.left.control, &s.label.control);
-    CHECK(tui_redraw_owner(&s.label.control) == &s.left.control);
-    CHECK(tui_redraw_owner(&s.desktop.control) == 0);
+    /* Typing after the focus moved still shows the cursor. */
+    test_key(&s.desktop, 'x');
+    CHECK(pending_equals_full(&s.desktop));
+    CHECK(s.desktop.cursor_visible);
+
+    /* A window goes away and comes back. */
+    tui_remove(&s.right.control);
+    CHECK(pending_equals_full(&s.desktop));
+    tui_add(&s.desktop.control, &s.right.control);
+    CHECK(pending_equals_full(&s.desktop));
+
+    /* Raising a window changes who is on top. */
+    tui_bring_to_front(&s.left.control);
+    CHECK(pending_equals_full(&s.desktop));
+
+    /* A label that changes text gets shorter and the old text is erased. */
+    tui_label_set_text(&s.label, "A much longer status text");
+    CHECK(pending_equals_full(&s.desktop));
+    tui_label_set_text(&s.label, "Ok");
+    CHECK(pending_equals_full(&s.desktop));
 }
 
-static void test_last_handler_is_cleared(void)
+typedef struct {
+    TuiDesktop desktop;
+    TuiWindow window;
+    TuiCheckBox check;
+    TuiRadioButton radio_a;
+    TuiRadioButton radio_b;
+    TuiListBox list;
+    TuiComboBox combo;
+    TuiButton button;
+} Widgets;
+
+static const char *widget_items[] = { "Apple", "Banana", "Orange", "Pear", "Plum" };
+
+static void widgets_build(Widgets *w)
+{
+    test_init_desktop(&w->desktop);
+    tui_window_init(&w->window, 2, 2, 40, 14, "Widgets");
+    tui_checkbox_init(&w->check, 1, 1, 12, "Check");
+    tui_radiobutton_init(&w->radio_a, 1, 2, 12, "One", 1);
+    tui_radiobutton_init(&w->radio_b, 1, 3, 12, "Two", 1);
+    tui_listbox_init(&w->list, 1, 5, 14, 3, widget_items, 5);
+    tui_combobox_init(&w->combo, 18, 1, 14, widget_items, 5);
+    tui_button_init(&w->button, 18, 3, 10, "Go", TUI_CMD_NONE);
+
+    tui_add(&w->desktop.control, &w->window.control);
+    tui_add(&w->window.control, &w->check.control);
+    tui_add(&w->window.control, &w->radio_a.control);
+    tui_add(&w->window.control, &w->radio_b.control);
+    tui_add(&w->window.control, &w->list.control);
+    tui_add(&w->window.control, &w->combo.control);
+    tui_add(&w->window.control, &w->button.control);
+}
+
+static void test_pending_widgets(void)
+{
+    Widgets w;
+
+    widgets_build(&w);
+    tui_draw(&w.desktop);
+
+    tui_desktop_set_focus(&w.desktop, &w.check.control);
+    test_key(&w.desktop, ' ');
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+
+    /* A radio button unchecks its sibling, which must repaint as well. */
+    tui_desktop_set_focus(&w.desktop, &w.radio_a.control);
+    test_key(&w.desktop, ' ');
+    CHECK(pending_equals_full(&w.desktop));
+    tui_desktop_set_focus(&w.desktop, &w.radio_b.control);
+    test_key(&w.desktop, ' ');
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+    CHECK(!tui_radiobutton_get_checked(&w.radio_a));
+
+    tui_desktop_set_focus(&w.desktop, &w.list.control);
+    test_key(&w.desktop, TUI_KEY_DOWN);
+    test_key(&w.desktop, TUI_KEY_DOWN);
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+    test_key(&w.desktop, TUI_KEY_END);
+    CHECK(pending_equals_full(&w.desktop));
+
+    tui_desktop_set_focus(&w.desktop, &w.button.control);
+    test_key(&w.desktop, ' ');
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+
+    /* The drop-down list comes and goes; the combo shows the new choice. */
+    tui_desktop_set_focus(&w.desktop, &w.combo.control);
+    test_key(&w.desktop, ' ');
+    CHECK(w.combo.open);
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+    test_key(&w.desktop, TUI_KEY_DOWN);
+    test_key(&w.desktop, TUI_KEY_DOWN);
+    CHECK(!w.desktop.dirty_all);
+    CHECK(pending_equals_full(&w.desktop));
+    test_key(&w.desktop, TUI_KEY_ENTER);
+    CHECK(!w.combo.open);
+    CHECK(tui_combobox_get_selected(&w.combo) == 2);
+    CHECK(pending_equals_full(&w.desktop));
+}
+
+static void test_unhandled_key_draws_nothing(void)
 {
     Scene s;
 
     scene_build(&s);
     tui_draw(&s.desktop);
-    test_key(&s.desktop, 'x');
-    CHECK(s.desktop.last_handler != 0);
+    CHECK(!s.desktop.dirty_all);
+    CHECK(s.desktop.dirty_count == 0);
 
-    /* TAB is handled by the desktop itself: no control to point at. */
-    test_key(&s.desktop, TUI_KEY_TAB);
-    CHECK(s.desktop.last_handler == 0);
+    /* Nobody handles F12: nothing changed, nothing to repaint. */
+    CHECK(!test_key(&s.desktop, TUI_KEY_F12));
+    CHECK(!s.desktop.dirty_all);
+    CHECK(s.desktop.dirty_count == 0);
+}
 
-    /* A key nobody handles leaves nothing behind either. */
-    test_key(&s.desktop, TUI_KEY_F12);
-    CHECK(s.desktop.last_handler == 0);
+static void dummy_draw(TuiControl *control, TuiDraw *draw)
+{
+    (void)control;
+    (void)draw;
+}
+
+static int dummy_event(TuiControl *control, TuiEvent *event)
+{
+    (void)control;
+    return event->type == TUI_EV_KEY && event->key == 'z';
+}
+
+static const TuiClass dummy_class = { dummy_draw, dummy_event };
+
+/* A control that does not report its changes is repainted everywhere: safe. */
+static void test_unreported_event_repaints_all(void)
+{
+    Scene s;
+    TuiControl dummy;
+
+    scene_build(&s);
+    tui_control_init(&dummy, &dummy_class, 0, 0, 3, 1,
+                     TUI_VISIBLE | TUI_ENABLED | TUI_FOCUSABLE);
+    tui_add(&s.desktop.control, &dummy);
+    tui_draw(&s.desktop);
+    tui_desktop_set_focus(&s.desktop, &dummy);
+    tui_draw_pending(&s.desktop);
+    CHECK(!s.desktop.dirty_all);
+
+    CHECK(test_key(&s.desktop, 'z'));
+    CHECK(s.desktop.dirty_all);
 }
 
 void test_mini_keys_suite(void)
 {
-    test_run_case("partial redraw equals full redraw",
-                  test_partial_redraw_matches_full);
-    test_run_case("control redraw equals full redraw under overlap",
-                  test_control_redraw_matches_full_with_overlap);
-    test_run_case("redraw owner", test_redraw_owner);
-    test_run_case("dispatch clears last handler", test_last_handler_is_cleared);
+    test_run_case("pending redraw: typing under an overlapping window",
+                  test_pending_typing_under_overlap);
+    test_run_case("pending redraw: focus and tree changes",
+                  test_pending_focus_and_tree_changes);
+    test_run_case("pending redraw: widgets", test_pending_widgets);
+    test_run_case("pending redraw: unhandled key draws nothing",
+                  test_unhandled_key_draws_nothing);
+    test_run_case("pending redraw: unreported event repaints all",
+                  test_unreported_event_repaints_all);
     test_run_case("edit accepts 8-bit console text",
                   test_edit_accepts_what_the_console_prints);
     test_run_case("mini keys letters", test_letters);

@@ -236,7 +236,21 @@ static int scrollbar_key(TuiScrollBar *sb, TuiEvent *event)
     return 0;
 }
 
+static int scrollbar_handle(TuiControl *control, TuiEvent *event);
+
 static int scrollbar_event(TuiControl *control, TuiEvent *event)
+{
+    int handled;
+
+    handled = scrollbar_handle(control, event);
+
+    if (handled)
+        tui_invalidate(control);
+
+    return handled;
+}
+
+static int scrollbar_handle(TuiControl *control, TuiEvent *event)
 {
     TuiScrollBar *sb;
     TuiDesktop *desktop;

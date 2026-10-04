@@ -31,8 +31,7 @@ void tui_edit_init(TuiEdit *edit,
         TUI_VISIBLE |
         TUI_ENABLED |
         TUI_FOCUSABLE |
-        TUI_TABSTOP |
-        TUI_LOCAL);
+        TUI_TABSTOP);
 
     edit->text = buffer;
     edit->capacity = capacity;
@@ -189,8 +188,22 @@ static void edit_ensure_cursor_visible(TuiEdit *edit)
         edit->offset = 0;
 }
 
-static int edit_event(TuiControl *control,
-                      TuiEvent *event)
+static int edit_handle(TuiControl *control, TuiEvent *event);
+
+/* Whatever the control handled may have changed what it shows. */
+static int edit_event(TuiControl *control, TuiEvent *event)
+{
+    int handled;
+
+    handled = edit_handle(control, event);
+
+    if (handled)
+        tui_invalidate(control);
+
+    return handled;
+}
+
+static int edit_handle(TuiControl *control, TuiEvent *event)
 {
     TuiEdit *edit;
 
@@ -284,6 +297,8 @@ void tui_edit_set_text(TuiEdit *edit,
         edit->text == 0 ||
         edit->capacity <= 0)
         return;
+
+    tui_invalidate(&edit->control);
 
     i = 0;
 

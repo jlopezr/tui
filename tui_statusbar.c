@@ -208,9 +208,28 @@ void tui_statusbar_init(TuiStatusBar *bar,
 }
 
 
+static int statusbar_same_text(const char *a, const char *b)
+{
+    while (*a != '\0' && *a == *b) {
+        ++a;
+        ++b;
+    }
+
+    return *a == *b;
+}
+
 void tui_statusbar_set_text(TuiStatusBar *bar,
                             const char *text)
 {
+    /*
+     * A different pointer with the same text changes nothing on screen. The
+     * same pointer may be a buffer the caller edited in place: draw it again.
+     */
+    if (bar->status != text && bar->status != 0 && text != 0 &&
+        statusbar_same_text(bar->status, text))
+        return;
+
     bar->status = text;
+    tui_invalidate(&bar->control);
 }
 

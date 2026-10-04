@@ -38,8 +38,13 @@ static int listbox_scroll_event(TuiControl *control, TuiEvent *event)
     handled = tui_scrollbar_class.event(control, event);
     list = (TuiListBox *)control->parent;
 
-    if (list != 0)
+    if (list != 0) {
         list->offset = tui_scrollbar_get_value(&list->scrollbar);
+
+        /* The viewport moved: the rows have to be drawn again. */
+        if (handled)
+            tui_invalidate(&list->control);
+    }
 
     return handled;
 }
@@ -150,8 +155,7 @@ void tui_listbox_init(TuiListBox *list,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP |
-                     TUI_LOCAL);
+                     TUI_TABSTOP);
 
     tui_scrollbar_init(&list->scrollbar, 0, 0, 1,
                        TUI_VERTICAL, TUI_CMD_NONE);
@@ -170,6 +174,8 @@ void tui_listbox_set_items(TuiListBox *list,
 {
     if (list == 0)
         return;
+
+    tui_invalidate(&list->control);
 
     if (items == 0 || count <= 0) {
         list->items = 0;
@@ -192,6 +198,8 @@ void tui_listbox_set_scrollbar(TuiListBox *list, int enabled)
     if (list == 0)
         return;
 
+    tui_invalidate(&list->control);
+
     list->scrollbar_enabled = enabled != 0;
     listbox_sync_scrollbar(list);
 }
@@ -209,6 +217,8 @@ void tui_listbox_set_selected(TuiListBox *list,
 {
     if (list == 0)
         return;
+
+    tui_invalidate(&list->control);
 
     if (list->count <= 0) {
         list->selected = -1;
@@ -359,7 +369,22 @@ static void listbox_draw(TuiControl *control, TuiDraw *draw)
     }
 }
 
+static int listbox_handle(TuiControl *control, TuiEvent *event);
+
+/* Whatever the control handled may have changed what it shows. */
 static int listbox_event(TuiControl *control, TuiEvent *event)
+{
+    int handled;
+
+    handled = listbox_handle(control, event);
+
+    if (handled)
+        tui_invalidate(control);
+
+    return handled;
+}
+
+static int listbox_handle(TuiControl *control, TuiEvent *event)
 {
     TuiListBox *list;
     int local_x;

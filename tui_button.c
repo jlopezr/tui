@@ -70,7 +70,26 @@ static int tui_button_command(TuiButton *button,
     return 1;
 }
 
+static int button_handle(TuiControl *control, TuiEvent *event);
+
+/*
+ * Handled events count as reported even when nothing here changed (a press
+ * on a button, a mouse move over an open list): the controls that did change
+ * something have invalidated it themselves.
+ */
 static int button_event(TuiControl *control, TuiEvent *event)
+{
+    int handled;
+
+    handled = button_handle(control, event);
+
+    if (handled)
+        tui_event_done(control);
+
+    return handled;
+}
+
+static int button_handle(TuiControl *control, TuiEvent *event)
 {
     TuiButton *button;
     TuiDesktop *desktop;
@@ -136,8 +155,7 @@ void tui_button_init(TuiButton *button,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP |
-                     TUI_LOCAL);
+                     TUI_TABSTOP);
 
     button->text = text;
     button->command = command;

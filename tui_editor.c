@@ -305,6 +305,10 @@ static int editor_scroll_event(TuiControl *control, TuiEvent *event)
             editor->top_line = tui_scrollbar_get_value(&editor->vscroll);
         else
             editor->left_col = tui_scrollbar_get_value(&editor->hscroll);
+
+        /* The viewport moved: the text has to be drawn again. */
+        if (handled)
+            tui_invalidate(&editor->control);
     }
 
     return handled;
@@ -339,8 +343,7 @@ void tui_editor_init(TuiEditor *editor,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP |
-                     TUI_LOCAL);
+                     TUI_TABSTOP);
 
     editor->model = model;
     editor->cursor_pos = 0;
@@ -404,6 +407,7 @@ void tui_editor_set_readonly(TuiEditor *editor, int readonly)
         return;
 
     editor->readonly = readonly != 0;
+    tui_invalidate(&editor->control);
 
     if (editor->model != 0)
         editor_sync(editor, 0);
@@ -584,7 +588,22 @@ static void editor_mouse(TuiEditor *editor, TuiEvent *event)
     editor_sync(editor, 1);
 }
 
+static int editor_handle(TuiControl *control, TuiEvent *event);
+
+/* Whatever the control handled may have changed what it shows. */
 static int editor_event(TuiControl *control, TuiEvent *event)
+{
+    int handled;
+
+    handled = editor_handle(control, event);
+
+    if (handled)
+        tui_invalidate(control);
+
+    return handled;
+}
+
+static int editor_handle(TuiControl *control, TuiEvent *event)
 {
     TuiEditor *editor;
     int old_pos;

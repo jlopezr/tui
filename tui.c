@@ -213,6 +213,8 @@ void tui_add(TuiControl *parent, TuiControl *child)
         parent->first = child;
 
     parent->last = child;
+
+    tui_invalidate(child);
 }
 
 void tui_bring_to_front(TuiControl *control)
@@ -235,6 +237,8 @@ void tui_bring_to_front(TuiControl *control)
     control->next = 0;
     parent->last->next = control;
     parent->last = control;
+
+    tui_invalidate(control);
 }
 
 void tui_remove(TuiControl *control)
@@ -245,6 +249,9 @@ void tui_remove(TuiControl *control)
 
     if (parent == 0)
         return;
+
+    /* While it is still in the tree: that is where its rectangle is. */
+    tui_invalidate(control);
 
     if (control->prev != 0)
         control->prev->next = control->next;
@@ -406,14 +413,49 @@ void tui_desktop_init(TuiDesktop *desktop)
     desktop->cursor_x = 0;
     desktop->cursor_y = 0;
 
-    desktop->last_handler = 0;
+    desktop->dirty_all = 1;
+    desktop->dirty_count = 0;
+    desktop->dirty_serial = 0;
     desktop->partial_draw = 0;
+}
+
+/* The frame of a window: it looks different when the window is active. */
+static void tui_invalidate_frame(TuiControl *window)
+{
+    if (window == 0)
+        return;
+
+    tui_invalidate_rect(window, 0, 0, window->width, 1);
+    tui_invalidate_rect(window, 0, window->height - 1, window->width, 1);
+    tui_invalidate_rect(window, 0, 0, 1, window->height);
+    tui_invalidate_rect(window, window->width - 1, 0, 1, window->height);
 }
 
 void tui_desktop_set_focus(TuiDesktop *desktop,
                            TuiControl *control)
 {
+    TuiControl *old;
+
+    old = desktop->focused;
+
+    if (old == control)
+        return;
+
     desktop->focused = control;
+
+    /* The new focus asks for the cursor again when it is drawn. */
+    desktop->cursor_visible = 0;
+
+    if (old != 0)
+        tui_invalidate(old);
+
+    if (control != 0)
+        tui_invalidate(control);
+
+    if (tui_window_of(old) != tui_window_of(control)) {
+        tui_invalidate_frame(tui_window_of(old));
+        tui_invalidate_frame(tui_window_of(control));
+    }
 }
 
 TuiControl *tui_desktop_get_focus(TuiDesktop *desktop)
@@ -682,7 +724,11 @@ void tui_draw_begin(TuiDesktop *desktop)
     desktop->control.height =
         tui_console_height();
 
-    desktop->cursor_visible = 0;
+    /*
+     * The cursor is not reset here: a partial draw that does not reach the
+     * focused control must leave it where it is. A control that has the focus
+     * asks for the cursor whenever it is drawn, and a focus change hides it.
+     */
 }
 
 void tui_draw_region(TuiDesktop *desktop, int x1, int y1, int x2, int y2)
@@ -724,10 +770,120 @@ void tui_draw(TuiDesktop *desktop)
 {
     tui_draw_begin(desktop);
 
+    desktop->cursor_visible = 0;
+
     tui_draw_region(desktop,
                     0, 0,
                     desktop->control.width,
                     desktop->control.height);
+
+    desktop->dirty_all = 0;
+    desktop->dirty_count = 0;
+
+    tui_draw_end(desktop);
+}
+
+/*
+ * ------------------------------------------------------------
+ * Invalidation
+ * ------------------------------------------------------------
+ */
+
+static void tui_dirty_add(TuiDesktop *desktop,
+                          int x1, int y1, int x2, int y2)
+{
+    int i;
+
+    ++desktop->dirty_serial;
+
+    if (desktop->dirty_all)
+        return;
+
+    x1 = tui_max(x1, 0);
+    y1 = tui_max(y1, 0);
+    x2 = tui_min(x2, desktop->control.width);
+    y2 = tui_min(y2, desktop->control.height);
+
+    if (x1 >= x2 || y1 >= y2)
+        return;
+
+    /* Already covered by something we are going to draw. */
+    for (i = 0; i < desktop->dirty_count; ++i) {
+        if (desktop->dirty[i][0] <= x1 && desktop->dirty[i][1] <= y1 &&
+            desktop->dirty[i][2] >= x2 && desktop->dirty[i][3] >= y2)
+            return;
+    }
+
+    if (desktop->dirty_count >= TUI_DIRTY_MAX) {
+        desktop->dirty_all = 1;
+        return;
+    }
+
+    desktop->dirty[desktop->dirty_count][0] = x1;
+    desktop->dirty[desktop->dirty_count][1] = y1;
+    desktop->dirty[desktop->dirty_count][2] = x2;
+    desktop->dirty[desktop->dirty_count][3] = y2;
+    ++desktop->dirty_count;
+}
+
+void tui_invalidate_rect(TuiControl *control,
+                         int x, int y, int width, int height)
+{
+    TuiDesktop *desktop;
+    int sx;
+    int sy;
+
+    desktop = tui_find_desktop(control);
+
+    if (desktop == 0)
+        return;
+
+    tui_control_screen_pos(control, &sx, &sy);
+
+    tui_dirty_add(desktop, sx + x, sy + y, sx + x + width, sy + y + height);
+}
+
+void tui_invalidate(TuiControl *control)
+{
+    tui_invalidate_rect(control, 0, 0, control->width, control->height);
+}
+
+void tui_invalidate_all(TuiDesktop *desktop)
+{
+    ++desktop->dirty_serial;
+    desktop->dirty_all = 1;
+}
+
+void tui_event_done(TuiControl *control)
+{
+    TuiDesktop *desktop;
+
+    desktop = tui_find_desktop(control);
+
+    if (desktop != 0)
+        ++desktop->dirty_serial;
+}
+
+void tui_draw_pending(TuiDesktop *desktop)
+{
+    int i;
+
+    if (desktop->dirty_all) {
+        tui_draw(desktop);
+        return;
+    }
+
+    if (desktop->dirty_count == 0)
+        return;
+
+    tui_draw_begin(desktop);
+
+    for (i = 0; i < desktop->dirty_count; ++i)
+        tui_draw_region(desktop,
+                        desktop->dirty[i][0], desktop->dirty[i][1],
+                        desktop->dirty[i][2], desktop->dirty[i][3]);
+
+    desktop->dirty_count = 0;
 
     tui_draw_end(desktop);
 }
@@ -736,17 +892,6 @@ TuiControl *tui_window_of(TuiControl *control)
 {
     for (; control != 0; control = control->parent) {
         if (control->cls == &tui_window_class)
-            return control;
-    }
-
-    return 0;
-}
-
-TuiControl *tui_redraw_owner(TuiControl *control)
-{
-    for (; control != 0; control = control->parent) {
-        if ((control->flags & TUI_LOCAL) != 0 ||
-            control->cls == &tui_window_class)
             return control;
     }
 
@@ -967,10 +1112,8 @@ static int tui_dispatch_mouse(TuiDesktop *desktop,
     while (target != 0) {
         if (target->cls != 0 &&
             target->cls->event != 0 &&
-            target->cls->event(target, event)) {
-            desktop->last_handler = target;
+            target->cls->event(target, event))
             return 1;
-        }
 
         target = target->parent;
     }
@@ -978,13 +1121,10 @@ static int tui_dispatch_mouse(TuiDesktop *desktop,
     return 0;
 }
 
-int tui_dispatch(TuiDesktop *desktop,
-                 TuiEvent *event)
+static int tui_dispatch_event(TuiDesktop *desktop,
+                              TuiEvent *event)
 {
     TuiControl *target;
-
-    /* Only a key handled by an ordinary control leaves a handler behind. */
-    desktop->last_handler = 0;
 
     if (event->type == TUI_EV_MOUSE)
         return tui_dispatch_mouse(desktop, event);
@@ -1000,10 +1140,8 @@ int tui_dispatch(TuiDesktop *desktop,
                 target->cls->event != 0) {
 
                 if (target->cls->event(target,
-                                       event)) {
-                    desktop->last_handler = target;
+                                       event))
                     return 1;
-                }
             }
 
             target = target->parent;
@@ -1024,10 +1162,10 @@ int tui_dispatch(TuiDesktop *desktop,
     if (event->type == TUI_EV_KEY &&
         event->key == TUI_KEY_TAB) {
 
-        desktop->focused =
-            tui_next_focusable(
-                desktop,
-                desktop->focused);
+        tui_desktop_set_focus(desktop,
+                              tui_next_focusable(desktop,
+                                                 desktop->focused));
+        tui_event_done(&desktop->control);
 
         return 1;
     }
@@ -1042,16 +1180,34 @@ int tui_dispatch(TuiDesktop *desktop,
             target->cls->event != 0) {
 
             if (target->cls->event(target,
-                                   event)) {
-                desktop->last_handler = target;
+                                   event))
                 return 1;
-            }
         }
 
         target = target->parent;
     }
 
     return 0;
+}
+
+int tui_dispatch(TuiDesktop *desktop,
+                 TuiEvent *event)
+{
+    int serial;
+    int handled;
+
+    serial = desktop->dirty_serial;
+
+    handled = tui_dispatch_event(desktop, event);
+
+    /*
+     * Handled, yet nothing was invalidated: the control does not report what
+     * it changes, so assume anything. Safe, just not fast.
+     */
+    if (handled && desktop->dirty_serial == serial)
+        tui_invalidate_all(desktop);
+
+    return handled;
 }
 
 /*

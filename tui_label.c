@@ -49,8 +49,13 @@ void tui_label_init(TuiLabel *label,
 
 void tui_label_set_text(TuiLabel *label, const char *text)
 {
+    /* Old and new rectangle: the label may have got shorter. */
+    tui_invalidate(&label->control);
+
     label->text = text;
     label->control.width = tui_strlen(text);
+
+    tui_invalidate(&label->control);
 }
 
 

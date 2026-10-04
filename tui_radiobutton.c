@@ -70,8 +70,10 @@ static int radiobutton_select(TuiRadioButton *radio,
 
                 other = (TuiRadioButton *)sibling;
 
-                if (other->group == radio->group)
+                if (other->group == radio->group && other->checked) {
                     other->checked = 0;
+                    tui_invalidate(sibling);
+                }
             }
 
             sibling = sibling->next;
@@ -79,6 +81,7 @@ static int radiobutton_select(TuiRadioButton *radio,
     }
 
     radio->checked = 1;
+    tui_invalidate(control);
 
     if (!changed || radio->command == TUI_CMD_NONE)
         return 1;
@@ -140,6 +143,7 @@ void tui_radiobutton_set_checked(TuiRadioButton *radio, int checked)
 
     if (!checked) {
         radio->checked = 0;
+        tui_invalidate(&radio->control);
         return;
     }
 
@@ -153,8 +157,10 @@ void tui_radiobutton_set_checked(TuiRadioButton *radio, int checked)
 
                 other = (TuiRadioButton *)sibling;
 
-                if (other->group == radio->group)
+                if (other->group == radio->group && other->checked) {
                     other->checked = 0;
+                    tui_invalidate(sibling);
+                }
             }
 
             sibling = sibling->next;
@@ -162,6 +168,7 @@ void tui_radiobutton_set_checked(TuiRadioButton *radio, int checked)
     }
 
     radio->checked = 1;
+    tui_invalidate(&radio->control);
 }
 
 int tui_radiobutton_get_checked(TuiRadioButton *radio)
