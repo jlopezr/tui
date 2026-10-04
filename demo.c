@@ -751,7 +751,8 @@ static TuiStatusItem status_items[] = {
 
 int main(void)
 {
-    App app;
+    /* Static: ~15 KB, bigger than the 8 KB stack of the MiniCPU start-up code. */
+    static App app;
     TuiEvent event;
 
     if (!tui_init())

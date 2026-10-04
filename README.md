@@ -214,4 +214,19 @@ los textos dinámicos:
 
 ```powershell
 ..\tools\mini-lcc.ps1 .\tui_unity_mini.c -o .\_build\tui_mini.s
+..\tools\mini-asm.ps1 .\_build\tui_mini.s -o .\_build\tui_mini.bin
 ```
+
+Se puede probar sin placa en el simulador funcional, que modela la consola de
+texto. La demo lee el teclado por la serie, así que `--serial-input` hace de
+teclado (aquí, solo `Esc`, que cierra la demo) y `--console-output` vuelca la
+pantalla al terminar:
+
+```powershell
+[IO.File]::WriteAllBytes("keys.bin", [byte[]](27))
+..\tools\cpusim.ps1 .\_build\tui_mini.bin --serial-input keys.bin --console-output pantalla.txt --max 50000000
+```
+
+La pila de arranque de `mini-lcc` es de 8 KiB: las estructuras grandes no pueden
+ser locales de `main` (por eso `App` es `static` en `demo.c`). Si la pila se
+desborda pisa el código y la CPU se para con error 5 (codificación inválida).
