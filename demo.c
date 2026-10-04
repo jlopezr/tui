@@ -821,7 +821,7 @@ static int command_is_light(int command)
  * which the caller always adds. Anything stacked on top of those rectangles is
  * drawn again by the region walk, so overlap is not a concern.
  */
-static int demo_plan(App *app, const TuiEvent *event, int was_command_key,
+static int demo_plan(App *app, const TuiEvent *event, int no_handler_ok,
                      TuiControl *old_focus, TuiControl *old_top,
                      Areas *areas)
 {
@@ -843,8 +843,8 @@ static int demo_plan(App *app, const TuiEvent *event, int was_command_key,
     if (handler != 0) {
         if (!areas_add(areas, tui_redraw_owner(handler)))
             return 0;
-    } else if (!was_command_key) {
-        /* Shortcuts and menus: only TAB is known to be cheap. */
+    } else if (!no_handler_ok) {
+        /* Shortcuts and menus: only TAB and a click nobody wanted are cheap. */
         return 0;
     }
 
@@ -903,6 +903,7 @@ int main(void)
     int redraw;
     int handled;
     int was_tab;
+    int had_capture;
     TuiControl *old_focus;
     TuiControl *old_top;
 
@@ -944,8 +945,9 @@ int main(void)
 
             old_focus = tui_desktop_get_focus(&app.desktop);
             old_top = app.desktop.control.last;
+            had_capture = app.desktop.capture != 0;
             was_tab = event.type == TUI_EV_KEY && event.key == TUI_KEY_TAB &&
-                      app.desktop.capture == 0;
+                      !had_capture;
 
             handled = tui_dispatch(&app.desktop, &event);
 
@@ -953,12 +955,20 @@ int main(void)
                 /*
                  * Nothing reacted. A key or a mouse move over nothing changes
                  * nothing on screen (the pointer is the console's business).
+                 * Other mouse events (the release of a click on a list, a click
+                 * on the bare background of a window) can still move the focus;
+                 * the plan covers that.
                  */
                 if (event.type == TUI_EV_KEY ||
                     (event.type == TUI_EV_MOUSE &&
                      event.mouse_action == TUI_MOUSE_MOVE &&
-                     app.desktop.capture == 0))
+                     !had_capture))
                     redraw = REDRAW_NONE;
+                else if (event.type == TUI_EV_MOUSE &&
+                         !had_capture && app.desktop.capture == 0 &&
+                         demo_plan(&app, &event, 1, old_focus, old_top,
+                                   &areas))
+                    redraw = REDRAW_AREAS;
             } else if (demo_plan(&app, &event, was_tab, old_focus, old_top,
                                  &areas)) {
                 redraw = REDRAW_AREAS;
