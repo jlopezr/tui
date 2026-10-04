@@ -194,6 +194,30 @@ struct TuiControl {
 
 
 /*
+ * Commands. An application describes what each command means in a table and asks
+ * the library to find the entry, instead of testing the command number by hand:
+ *
+ *     static const TuiCommand commands[] = {
+ *         { CMD_SAVE, "Saved",  do_save },
+ *         { CMD_QUIT, "Bye",    do_quit },
+ *         { CMD_HELP, "Help...", 0 }
+ *     };
+ *     entry = tui_command_find(commands, 3, event.command);
+ *
+ * 'text' is whatever the application shows for the command (a status line), and
+ * 'run' what it does about it; either may be 0.
+ */
+typedef struct TuiCommand {
+    int command;
+    const char *text;
+    void (*run)(void *context, int command);
+} TuiCommand;
+
+/* The entry for 'command', or 0 if the table does not have it. */
+const TuiCommand *tui_command_find(const TuiCommand *table, int count,
+                                   int command);
+
+/*
  * Rectangles remembered between two draws. With more, the new one is merged into
  * the rectangle that grows the least, so a burst of changes repaints a bit more
  * than needed instead of the whole screen.

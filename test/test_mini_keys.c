@@ -709,6 +709,43 @@ static void test_pending_big_rectangle_absorbs_small_ones(void)
     CHECK(pending_equals_full(&s.desktop));
 }
 
+static int command_ran = 0;
+
+static void command_action(void *context, int command)
+{
+    *(int *)context += command;
+    command_ran = command;
+}
+
+static void test_command_table_lookup(void)
+{
+    static const TuiCommand table[] = {
+        { 10, "ten",   0 },
+        { 20, 0,       command_action },
+        { 30, "thirty", command_action }
+    };
+    const TuiCommand *entry;
+    int context;
+
+    entry = tui_command_find(table, 3, 10);
+    CHECK(entry == &table[0]);
+    CHECK(entry->text != 0 && entry->run == 0);
+
+    entry = tui_command_find(table, 3, 30);
+    CHECK(entry == &table[2]);
+
+    /* The library only finds; the caller decides what to do with the entry. */
+    context = 5;
+    command_ran = 0;
+    entry = tui_command_find(table, 3, 20);
+    CHECK(entry != 0 && entry->text == 0 && entry->run != 0);
+    entry->run(&context, 20);
+    CHECK(context == 25 && command_ran == 20);
+
+    CHECK(tui_command_find(table, 3, 99) == 0);
+    CHECK(tui_command_find(table, 0, 10) == 0);
+}
+
 static void test_unhandled_key_draws_nothing(void)
 {
     Scene s;
@@ -777,6 +814,7 @@ void test_mini_keys_suite(void)
                   test_pending_big_rectangle_absorbs_small_ones);
     test_run_case("pending redraw: combo opened from another window",
                   test_pending_combo_from_another_window);
+    test_run_case("command table lookup", test_command_table_lookup);
     test_run_case("pending redraw: unhandled key draws nothing",
                   test_unhandled_key_draws_nothing);
     test_run_case("pending redraw: unreported event repaints all",

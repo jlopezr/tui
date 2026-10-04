@@ -318,6 +318,30 @@ abrir o cerrar la lista de un combo ~55–70; ratón sobre una lista desplegada 
 redibujado completo ~256. `tui_draw()` no cambia. `tui_fill` y `tui_text` recortan
 el rectángulo una vez en vez de celda a celda.
 
+#### Tabla de comandos
+
+Un control (un botón, una opción de menú, una barra) emite un número de comando; lo
+que significa lo decide la aplicación. En vez de una cadena de `if` sobre ese
+número, se describe en una tabla y la biblioteca busca la entrada:
+
+```c
+static const TuiCommand commands[] = {
+    { CMD_SAVE, "Command: File -> Save", 0 },        /* texto para la barra de estado */
+    { CMD_QUIT, "Command: File -> Exit", do_quit },  /* y una acción */
+    { CMD_ABOUT, 0, show_about }                     /* cualquiera de las dos puede faltar */
+};
+
+entry = tui_command_find(commands, 3, event.command);
+if (entry != 0) {
+    if (entry->text) tui_statusbar_set_text(&status, entry->text);
+    if (entry->run)  entry->run(app, event.command);
+}
+```
+
+`demo.c` lo usa así: `dispatch_command` son cuatro líneas y añadir un comando es
+añadir una fila. La biblioteca solo busca; qué hacer con el texto y con `run` es de
+la aplicación (el contexto que se le pasa a `run` es suyo).
+
 **Trampa de `mini-lcc`**: `(unsigned char)x` sobre un `int` no enmascara. Un
 carácter ≥128 leído de un buffer de `char` llega con el signo extendido
 (`0xFFFFFFA4`) y la RAM de texto lo rechaza con un error de MMIO. En

@@ -775,6 +775,25 @@ void tui_draw(TuiDesktop *desktop)
 
 /*
  * ------------------------------------------------------------
+ * Commands
+ * ------------------------------------------------------------
+ */
+
+const TuiCommand *tui_command_find(const TuiCommand *table, int count,
+                                   int command)
+{
+    int i;
+
+    for (i = 0; i < count; ++i) {
+        if (table[i].command == command)
+            return &table[i];
+    }
+
+    return 0;
+}
+
+/*
+ * ------------------------------------------------------------
  * Invalidation
  * ------------------------------------------------------------
  */

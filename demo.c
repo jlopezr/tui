@@ -165,35 +165,71 @@ typedef struct App {
     TuiLabel layout_output_line_2;
 } App;
 
-typedef struct CommandEntry {
-    int command;
-    const char *description;
-} CommandEntry;
-
 static void demo_show_controls(App *app);
 static void demo_show_layout(App *app);
 static void demo_show_editor(App *app);
+static void demo_update_scroll_labels(App *app);
+static void demo_update_editor_status(App *app);
 
-static CommandEntry command_table[] = {
-    { CMD_NEW,           "Command: File -> New" },
-    { CMD_OPEN,          "Command: File -> Open" },
-    { CMD_SAVE,          "Command: File -> Save" },
-    { CMD_RUN,           "Command: Run -> Run" },
-    { CMD_STOP,          "Command: Run -> Stop" },
-    { CMD_ABOUT,         "Command: Help -> About" },
-    { CMD_LIST_OPEN,     "Command: ListBox activate" },
-    { CMD_BUTTON_ACTION, "Command: Button click" },
-    { CMD_MOUSE_TOGGLE,  "Command: Mouse support changed" },
-    { CMD_LANG_BASIC,    "Command: Language -> BASIC" },
-    { CMD_LANG_FORTH,    "Command: Language -> Forth" },
-    { CMD_LANG_C,        "Command: Language -> C" },
-    { CMD_OPTIMIZATION,  "Command: Optimization changed" },
-    { CMD_SCROLL_V,      "Command: Vertical scroll bar" },
-    { CMD_SCROLL_H,      "Command: Horizontal scroll bar" },
-    { CMD_DEMO_CONTROLS, "Demo: Controls" },
-    { CMD_DEMO_LAYOUT,   "Demo: Layout / Mini IDE" },
-    { CMD_DEMO_EDITOR,   "Demo: Editor" },
-    { CMD_QUIT,          "Command: File -> Exit" }
+/* What a command does besides showing its text. The context is the App. */
+static void cmd_quit(void *context, int command)
+{
+    (void)command;
+    ((App *)context)->running = 0;
+}
+
+static void cmd_scroll(void *context, int command)
+{
+    (void)command;
+    demo_update_scroll_labels((App *)context);
+}
+
+static void cmd_demo_controls(void *context, int command)
+{
+    (void)command;
+    demo_show_controls((App *)context);
+}
+
+static void cmd_demo_layout(void *context, int command)
+{
+    (void)command;
+    demo_show_layout((App *)context);
+}
+
+static void cmd_demo_editor(void *context, int command)
+{
+    (void)command;
+    demo_show_editor((App *)context);
+}
+
+static void cmd_editor_state(void *context, int command)
+{
+    (void)command;
+    demo_update_editor_status((App *)context);
+}
+
+/* Text for the status bar (0: leave it), and the action (0: none). */
+static const TuiCommand command_table[] = {
+    { CMD_NEW,           "Command: File -> New",           0 },
+    { CMD_OPEN,          "Command: File -> Open",          0 },
+    { CMD_SAVE,          "Command: File -> Save",          0 },
+    { CMD_RUN,           "Command: Run -> Run",            0 },
+    { CMD_STOP,          "Command: Run -> Stop",           0 },
+    { CMD_ABOUT,         "Command: Help -> About",         0 },
+    { CMD_LIST_OPEN,     "Command: ListBox activate",      0 },
+    { CMD_BUTTON_ACTION, "Command: Button click",          0 },
+    { CMD_MOUSE_TOGGLE,  "Command: Mouse support changed", 0 },
+    { CMD_LANG_BASIC,    "Command: Language -> BASIC",     0 },
+    { CMD_LANG_FORTH,    "Command: Language -> Forth",     0 },
+    { CMD_LANG_C,        "Command: Language -> C",         0 },
+    { CMD_OPTIMIZATION,  "Command: Optimization changed",  0 },
+    { CMD_SCROLL_V,      "Command: Vertical scroll bar",   cmd_scroll },
+    { CMD_SCROLL_H,      "Command: Horizontal scroll bar", cmd_scroll },
+    { CMD_DEMO_CONTROLS, "Demo: Controls",                 cmd_demo_controls },
+    { CMD_DEMO_LAYOUT,   "Demo: Layout / Mini IDE",        cmd_demo_layout },
+    { CMD_DEMO_EDITOR,   "Demo: Editor",                   cmd_demo_editor },
+    { CMD_EDITOR_STATE,  0,                                cmd_editor_state },
+    { CMD_QUIT,          "Command: File -> Exit",          cmd_quit }
 };
 
 #define COMMAND_COUNT \
@@ -234,35 +270,20 @@ static void demo_update_editor_status(App *app)
 
 static int dispatch_command(App *app, int command)
 {
-    int i;
+    const TuiCommand *entry;
 
-    if (command == CMD_EDITOR_STATE) {
-        demo_update_editor_status(app);
-        return 1;
-    }
+    entry = tui_command_find(command_table, COMMAND_COUNT, command);
 
-    for (i = 0; i < COMMAND_COUNT; ++i) {
-        if (command_table[i].command == command) {
-            tui_statusbar_set_text(&app->status_bar,
-                                   command_table[i].description);
+    if (entry == 0)
+        return 0;
 
-            if (command == CMD_QUIT)
-                app->running = 0;
-            else if (command == CMD_SCROLL_V ||
-                     command == CMD_SCROLL_H)
-                demo_update_scroll_labels(app);
-            else if (command == CMD_DEMO_CONTROLS)
-                demo_show_controls(app);
-            else if (command == CMD_DEMO_LAYOUT)
-                demo_show_layout(app);
-            else if (command == CMD_DEMO_EDITOR)
-                demo_show_editor(app);
+    if (entry->text != 0)
+        tui_statusbar_set_text(&app->status_bar, entry->text);
 
-            return 1;
-        }
-    }
+    if (entry->run != 0)
+        entry->run(app, command);
 
-    return 0;
+    return 1;
 }
 
 static void note_control_event(App *app, TuiEvent *event)
