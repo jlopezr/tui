@@ -35,6 +35,13 @@ typedef struct TuiScrollBar TuiScrollBar;
 #define TUI_TABSTOP       0x0008
 #define TUI_GLOBAL        0x0010
 
+/*
+ * Whatever the control does with a key shows up inside its own rectangle (plus
+ * the status bar): no popups, no siblings changed. The application may then
+ * redraw just that rectangle after the control handled a key.
+ */
+#define TUI_LOCAL         0x0020
+
 
 /*
  * Event types

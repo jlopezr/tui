@@ -760,7 +760,12 @@ static TuiStatusItem status_items[] = {
 #define REDRAW_WINDOW   1
 #define REDRAW_FULL     2
 
-/* Redraw one window and the status bar, which every key event may update. */
+/*
+ * Redraw one area and the status bar, which every key event may update. The
+ * area is the control that took the key when it is TUI_LOCAL, otherwise its
+ * whole window. Anything stacked on top of the area is drawn again by the region
+ * walk, so overlap is not a concern.
+ */
 static void demo_draw_window(App *app, TuiControl *window)
 {
     int x1;
@@ -832,6 +837,9 @@ int main(void)
                 app.desktop.capture == 0) {
                 /* Nothing reacted: the pointer is the console's business. */
                 redraw = REDRAW_NONE;
+            } else if (!handled && event.type == TUI_EV_KEY) {
+                /* A key nobody wants changes nothing on screen. */
+                redraw = REDRAW_NONE;
             } else if (handled &&
                        event.type == TUI_EV_KEY &&
                        app.desktop.last_handler != 0) {
@@ -841,7 +849,10 @@ int main(void)
                  * changes, menus and shortcuts do not leave a handler, so
                  * they still get a full redraw.
                  */
-                redraw_window = tui_window_of(app.desktop.last_handler);
+                if ((app.desktop.last_handler->flags & TUI_LOCAL) != 0)
+                    redraw_window = app.desktop.last_handler;
+                else
+                    redraw_window = tui_window_of(app.desktop.last_handler);
                 if (redraw_window != 0)
                     redraw = REDRAW_WINDOW;
             }

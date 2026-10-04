@@ -274,9 +274,14 @@ esperas de memoria, no de MMIO). Con teclado y ratón cada evento lo disparaba y
 la demo iba a ~3 eventos por segundo. Ahora:
 
 - un **movimiento de ratón** que nadie gestiona no redibuja nada (1 ms);
-- una **tecla** gestionada por un control redibuja solo su ventana y la barra de
-  estado (`tui_draw_begin` / `tui_draw_region` / `tui_draw_end`; el núcleo se
-  salta los controles que no tocan la región), unos 36 ms;
+- una **tecla** que nadie gestiona tampoco redibuja nada;
+- una **tecla** gestionada por un control redibuja solo su rectángulo y la barra
+  de estado (`tui_draw_begin` / `tui_draw_region` / `tui_draw_end`; el núcleo se
+  salta los controles que no tocan la región, y lo que haya encima se vuelve a
+  pintar, así que el solape no importa). Eso vale para los controles marcados
+  `TUI_LOCAL` (Edit, TextArea, Editor: lo que hacen se ve dentro de su
+  rectángulo). Para los demás se redibuja su ventana. Unos 17 ms en la placa,
+  incluido el viaje por el puerto serie;
 - lo demás —foco, menús, atajos, comandos, clics— sigue siendo redibujado completo.
 
 `tui_dispatch` deja en `desktop->last_handler` el control que gestionó la tecla

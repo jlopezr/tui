@@ -31,7 +31,8 @@ void tui_edit_init(TuiEdit *edit,
         TUI_VISIBLE |
         TUI_ENABLED |
         TUI_FOCUSABLE |
-        TUI_TABSTOP);
+        TUI_TABSTOP |
+        TUI_LOCAL);
 
     edit->text = buffer;
     edit->capacity = capacity;

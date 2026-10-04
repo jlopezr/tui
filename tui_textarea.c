@@ -327,7 +327,8 @@ void tui_textarea_init(TuiTextArea *area,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP);
+                     TUI_TABSTOP |
+                     TUI_LOCAL);
 
     area->text = capacity > 0 ? buffer : 0;
     area->capacity = area->text != 0 ? capacity : 0;

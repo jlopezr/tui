@@ -379,6 +379,44 @@ static void test_partial_redraw_matches_full(void)
     CHECK(part.desktop.cursor_visible);
 }
 
+/* Redraw only the handling control, with a window stacked over part of it. */
+static void test_control_redraw_matches_full_with_overlap(void)
+{
+    Scene full;
+    Scene part;
+    TuiWindow over_full;
+    TuiWindow over_part;
+    Screen after_full;
+    Screen after_partial;
+    int x1, y1, x2, y2;
+
+    scene_build(&full);
+    tui_window_init(&over_full, 8, 2, 10, 3, "Over");
+    tui_add(&full.desktop.control, &over_full.control);
+    tui_draw(&full.desktop);
+    test_key(&full.desktop, 'h');
+    test_key(&full.desktop, 'i');
+    tui_draw(&full.desktop);
+    screen_save(&after_full);
+
+    scene_build(&part);
+    tui_window_init(&over_part, 8, 2, 10, 3, "Over");
+    tui_add(&part.desktop.control, &over_part.control);
+    tui_draw(&part.desktop);
+    test_key(&part.desktop, 'h');
+    test_key(&part.desktop, 'i');
+    CHECK(part.desktop.last_handler == &part.edit_left.control);
+    CHECK((part.edit_left.control.flags & TUI_LOCAL) != 0);
+
+    tui_control_rect(part.desktop.last_handler, &x1, &y1, &x2, &y2);
+    tui_draw_begin(&part.desktop);
+    tui_draw_region(&part.desktop, x1, y1, x2, y2);
+    tui_draw_end(&part.desktop);
+    screen_save(&after_partial);
+
+    CHECK(screens_equal(&after_full, &after_partial));
+}
+
 static void test_last_handler_is_cleared(void)
 {
     Scene s;
@@ -401,6 +439,8 @@ void test_mini_keys_suite(void)
 {
     test_run_case("partial redraw equals full redraw",
                   test_partial_redraw_matches_full);
+    test_run_case("control redraw equals full redraw under overlap",
+                  test_control_redraw_matches_full_with_overlap);
     test_run_case("dispatch clears last handler", test_last_handler_is_cleared);
     test_run_case("edit accepts 8-bit console text",
                   test_edit_accepts_what_the_console_prints);

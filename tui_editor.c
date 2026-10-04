@@ -339,7 +339,8 @@ void tui_editor_init(TuiEditor *editor,
                      TUI_VISIBLE |
                      TUI_ENABLED |
                      TUI_FOCUSABLE |
-                     TUI_TABSTOP);
+                     TUI_TABSTOP |
+                     TUI_LOCAL);
 
     editor->model = model;
     editor->cursor_pos = 0;
