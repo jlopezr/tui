@@ -709,6 +709,71 @@ static void test_pending_big_rectangle_absorbs_small_ones(void)
     CHECK(pending_equals_full(&s.desktop));
 }
 
+/* A panel is a container with no frame: it groups, docks, and draws nothing. */
+static void test_panel_groups_without_a_frame(void)
+{
+    TuiDesktop desktop;
+    TuiPanel panel;
+    TuiWindow side;
+    TuiWindow main_window;
+    TuiEdit edit;
+    char buffer[16];
+    Screen background;
+    Screen shown;
+    int x1, y1, x2, y2;
+
+    test_init_desktop(&desktop);
+    buffer[0] = '\0';
+    tui_panel_init(&panel, 0, 0, 1, 1);
+    panel.control.dock = TUI_DOCK_FILL;
+    tui_window_init(&side, 0, 0, 10, 5, "Side");
+    side.control.dock = TUI_DOCK_LEFT;
+    tui_window_init(&main_window, 0, 0, 1, 1, "Main");
+    main_window.control.dock = TUI_DOCK_FILL;
+    tui_edit_init(&edit, 1, 1, 12, buffer, 16);
+
+    /* Nothing in it: the panel leaves the desktop as it was. */
+    tui_draw(&desktop);
+    screen_save(&background);
+    tui_add(&desktop.control, &panel.control);
+    CHECK(pending_equals_full(&desktop));
+    screen_save(&shown);
+    CHECK(screens_equal(&background, &shown));
+
+    tui_add(&panel.control, &side.control);
+    tui_add(&panel.control, &main_window.control);
+    tui_add(&main_window.control, &edit.control);
+    tui_desktop_set_focus(&desktop, &edit.control);
+    tui_draw(&desktop);
+
+    /* It takes the whole desktop, and docks its children with no border offset. */
+    tui_control_rect(&panel.control, &x1, &y1, &x2, &y2);
+    CHECK(x1 == 0 && y1 == 0 && x2 == TEST_WIDTH && y2 == TEST_HEIGHT);
+    tui_control_rect(&side.control, &x1, &y1, &x2, &y2);
+    CHECK(x1 == 0 && y1 == 0 && x2 == 10);
+    tui_control_rect(&main_window.control, &x1, &y1, &x2, &y2);
+    CHECK(x1 == 10 && y1 == 0 && x2 == TEST_WIDTH && y2 == TEST_HEIGHT);
+
+    /* The mouse reaches what is inside it. */
+    tui_desktop_set_focus(&desktop, 0);
+    tui_control_rect(&edit.control, &x1, &y1, &x2, &y2);
+    CHECK(test_mouse_down(&desktop, x1 + 1, y1));
+    CHECK(tui_desktop_get_focus(&desktop) == &edit.control);
+
+    /* Taking the panel out takes everything, and lets go of the focus inside it. */
+    tui_remove(&panel.control);
+    CHECK(tui_desktop_get_focus(&desktop) == 0);
+    CHECK(pending_equals_full(&desktop));
+    screen_save(&shown);
+    CHECK(screens_equal(&background, &shown));
+
+    /* And it comes back as it was. */
+    tui_add(&desktop.control, &panel.control);
+    CHECK(pending_equals_full(&desktop));
+    tui_control_rect(&side.control, &x1, &y1, &x2, &y2);
+    CHECK(x1 == 0 && x2 == 10);
+}
+
 /*
  * The console turns the second of two quick clicks on a cell into DOUBLE. A
  * control that only knows about presses must not lose that click.
@@ -1060,6 +1125,8 @@ void test_mini_keys_suite(void)
                   test_pending_big_rectangle_absorbs_small_ones);
     test_run_case("pending redraw: combo opened from another window",
                   test_pending_combo_from_another_window);
+    test_run_case("panel groups children without a frame",
+                  test_panel_groups_without_a_frame);
     test_run_case("a double click is also a press",
                   test_double_click_is_also_a_press);
     test_run_case("removing a window releases what it holds",

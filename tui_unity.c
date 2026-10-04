@@ -6,6 +6,7 @@
 #include "tui_window.c"
 #include "tui_button.c"
 #include "tui_label.c"
+#include "tui_panel.c"
 #include "tui_edit.c"
 #include "tui_listbox.c"
 #include "tui_menu.c"

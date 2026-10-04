@@ -14,6 +14,7 @@ typedef struct TuiEvent TuiEvent;
 typedef struct TuiDesktop TuiDesktop;
 typedef struct TuiWindow TuiWindow;
 typedef struct TuiLabel TuiLabel;
+typedef struct TuiPanel TuiPanel;
 typedef struct TuiButton TuiButton;
 typedef struct TuiEdit TuiEdit;
 typedef struct TuiTextArea TuiTextArea;
@@ -351,6 +352,18 @@ struct TuiLabel {
 
     const char *text;
 };
+
+/*
+ * Panel: a container without frame, title or background. Its children keep their
+ * own coordinates relative to it and can be docked in it. Draws nothing itself.
+ */
+struct TuiPanel {
+    TuiControl control;
+};
+
+void tui_panel_init(TuiPanel *panel,
+                    int x, int y,
+                    int width, int height);
 
 /*
  * Button

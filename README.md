@@ -350,6 +350,16 @@ tui_dispatch(&desktop, &event);             /* el comando se ejecuta aquí dentr
 En `demo.c` no hay función de despacho ni bucle que mire los comandos: añadir uno es
 añadir una fila.
 
+#### Panel
+
+`TuiPanel` (`tui_panel_init`) es un contenedor sin marco, sin título y sin fondo: solo
+agrupa y acopla a sus hijos (`TUI_DOCK_*` funciona dentro como dentro de una ventana,
+pero sin el hueco del borde). No dibuja nada, no se arrastra, no sube al frente al
+hacer clic y no cuenta como ventana para el marco activo. Sirve para lo que no es una
+ventana: una «pantalla» de aplicación es un panel a pantalla completa
+(`TUI_DOCK_FILL`) con sus ventanas dentro, y cambiar de pantalla es `tui_remove` de
+una y `tui_add` de otra. `demo.c` lo hace así.
+
 #### Quitar controles y doble clic
 
 - **`tui_remove` limpia lo que el subárbol retenía.** Suelta el foco y la captura del

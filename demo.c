@@ -34,6 +34,9 @@ typedef struct App {
     int running;
     int active_demo;
 
+    /* One panel per screen, indexed by DEMO_* (index 0 is not used). */
+    TuiPanel screen[DEMO_EDITOR + 1];
+
     TuiDesktop desktop;
     TuiMenuBar menu_bar;
     TuiStatusBar status_bar;
@@ -107,23 +110,27 @@ typedef struct App {
  */
 
 /*
- * Taking the windows out of the desktop is all it takes: tui_remove() releases the
- * focus and the capture if they were inside, closes the combo boxes' lists and
- * ends any drag or press in progress.
+ * A screen is a panel that fills the desktop, with that screen's windows inside.
+ * Showing one is adding its panel and taking the previous one out; tui_remove()
+ * releases the focus and the capture if they were inside, closes the combo boxes'
+ * lists and ends any drag or press in progress.
  */
-static void demo_hide_active(App *app)
+static void demo_build_screen(App *app, int screen)
 {
-    if (app->active_demo == DEMO_CONTROLS) {
-        tui_remove(&app->left.control);
-        tui_remove(&app->right.control);
-        tui_remove(&app->workspace.control);
-    } else if (app->active_demo == DEMO_LAYOUT) {
-        tui_remove(&app->layout_view.control);
-    } else if (app->active_demo == DEMO_EDITOR) {
-        tui_remove(&app->editor_view.control);
-    }
+    tui_panel_init(&app->screen[screen], 0, 0, 1, 1);
+    app->screen[screen].control.dock = TUI_DOCK_FILL;
+}
 
-    app->active_demo = DEMO_NONE;
+static void demo_switch_to(App *app, int screen)
+{
+    if (app->active_demo == screen)
+        return;
+
+    if (app->active_demo != DEMO_NONE)
+        tui_remove(&app->screen[app->active_demo].control);
+
+    tui_add(&app->desktop.control, &app->screen[screen].control);
+    app->active_demo = screen;
 }
 
 /*
@@ -182,6 +189,8 @@ static void demo_update_scroll_labels(App *app)
 
 static void demo_build_controls(App *app)
 {
+    demo_build_screen(app, DEMO_CONTROLS);
+
     tui_window_init(&app->left, 0, 0, 12, 5, "Left");
     app->left.control.dock = TUI_DOCK_LEFT;
     app->left.control.attr = TUI_ATTR(TUI_WHITE, TUI_RED);
@@ -338,18 +347,15 @@ static void demo_build_controls(App *app)
     tui_add(&app->right.control, &app->hscroll.control);
     tui_add(&app->right.control, &app->hscroll_label.control);
     tui_add(&app->right.control, &app->help_area.control);
+
+    tui_add(&app->screen[DEMO_CONTROLS].control, &app->left.control);
+    tui_add(&app->screen[DEMO_CONTROLS].control, &app->right.control);
+    tui_add(&app->screen[DEMO_CONTROLS].control, &app->workspace.control);
 }
 
 static void demo_show_controls(App *app)
 {
-    if (app->active_demo != DEMO_CONTROLS) {
-        demo_hide_active(app);
-        tui_add(&app->desktop.control, &app->left.control);
-        tui_add(&app->desktop.control, &app->right.control);
-        tui_add(&app->desktop.control, &app->workspace.control);
-        app->active_demo = DEMO_CONTROLS;
-    }
-
+    demo_switch_to(app, DEMO_CONTROLS);
     tui_desktop_set_focus(&app->desktop, &app->edit.control);
     tui_statusbar_set_text(&app->status_bar,
                            "Demo: Controls");
@@ -383,6 +389,8 @@ static const char *layout_file_items[] = {
 
 static void demo_build_layout(App *app)
 {
+    demo_build_screen(app, DEMO_LAYOUT);
+
     tui_window_init(&app->layout_view, 0, 0, 1, 1,
                     "Layout Demo / Mini IDE");
     app->layout_view.control.dock = TUI_DOCK_FILL;
@@ -475,17 +483,13 @@ static void demo_build_layout(App *app)
             &app->output_window.control);
     tui_add(&app->layout_view.control,
             &app->editor_window.control);
+
+    tui_add(&app->screen[DEMO_LAYOUT].control, &app->layout_view.control);
 }
 
 static void demo_show_layout(App *app)
 {
-    if (app->active_demo != DEMO_LAYOUT) {
-        demo_hide_active(app);
-        tui_add(&app->desktop.control,
-                &app->layout_view.control);
-        app->active_demo = DEMO_LAYOUT;
-    }
-
+    demo_switch_to(app, DEMO_LAYOUT);
     tui_desktop_set_focus(&app->desktop,
                           &app->layout_files.control);
     tui_statusbar_set_text(&app->status_bar,
@@ -550,6 +554,8 @@ static void demo_build_editor(App *app)
 {
     int i;
 
+    demo_build_screen(app, DEMO_EDITOR);
+
     tui_window_init(&app->editor_view, 0, 0, 1, 1, "Editor Demo");
     app->editor_view.control.dock = TUI_DOCK_FILL;
 
@@ -585,16 +591,13 @@ static void demo_build_editor(App *app)
     tui_editor_set_command(&app->editor, CMD_EDITOR_STATE);
 
     tui_add(&app->editor_view.control, &app->editor.control);
+
+    tui_add(&app->screen[DEMO_EDITOR].control, &app->editor_view.control);
 }
 
 static void demo_show_editor(App *app)
 {
-    if (app->active_demo != DEMO_EDITOR) {
-        demo_hide_active(app);
-        tui_add(&app->desktop.control, &app->editor_view.control);
-        app->active_demo = DEMO_EDITOR;
-    }
-
+    demo_switch_to(app, DEMO_EDITOR);
     tui_desktop_set_focus(&app->desktop, &app->editor.control);
     demo_update_editor_status(app);
 }
