@@ -69,10 +69,13 @@ static int tui_locale_is_utf8(void)
             strstr(loc, "UTF8") != 0);
 }
 
-/* Double-line glyph for an abstract character, or 0. */
+/* UTF-8 only glyph (double lines, check mark, dot) for an abstract
+ * character, or 0. */
 static wchar_t tui_double_glyph(int ch)
 {
     switch (ch) {
+    case TUI_CH_CHECK:  return 0x221A;
+    case TUI_CH_BULLET: return 0x2022;
     case TUI_CH_DHLINE: return 0x2550;
     case TUI_CH_DVLINE: return 0x2551;
     case TUI_CH_DTL:    return 0x2554;
@@ -285,6 +288,14 @@ void tui_console_cell(int x, int y, int ch, int attr)
 
     case TUI_CH_CROSS:
         c = ACS_PLUS;
+        break;
+
+    case TUI_CH_CHECK:
+        c = 'x';
+        break;
+
+    case TUI_CH_BULLET:
+        c = 'o';
         break;
 
     default:

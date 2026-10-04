@@ -83,6 +83,11 @@
 #define TUI_CH_RIGHT_TRIANGLE  0x114
 #define TUI_CH_SCROLL_TRACK    0x115
 #define TUI_CH_SCROLL_THUMB    0x116
+
+/* Check box mark and radio button dot. */
+#define TUI_CH_CHECK           0x117
+#define TUI_CH_BULLET          0x118
+
 int  tui_console_init(void);
 void tui_console_shutdown(void);
 

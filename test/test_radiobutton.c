@@ -100,7 +100,7 @@ static void test_drawing_and_narrow_width(void)
 
     tui_radiobutton_set_checked(&radio, 1);
     tui_draw(&desktop);
-    CHECK(test_cell_chars[2][3] == 'o');
+    CHECK(test_cell_chars[2][3] == TUI_CH_BULLET);
 
     tui_radiobutton_init(&radio, 0, 4, 1, "", 0);
     tui_draw(&desktop);

@@ -22,22 +22,39 @@ static int mini_cursor_visible;
 static int mini_cursor_drawn;
 static unsigned int mini_cursor_under;
 
+/*
+ * Hardware colour index 0 is transparent: a glyph pixel or background drawn
+ * with it shows the framebuffer underneath. DOS black (0) therefore cannot
+ * live there, and the 16 DOS colours have to share the 15 opaque slots.
+ * Black takes the slot of light magenta, and light magenta is merged into
+ * magenta. The library itself uses neither.
+ */
+static const unsigned char mini_slot[16] = {
+    13, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 5, 14, 15
+};
+
 static unsigned int mini_cell(int ch, int attr)
 {
-    return ((unsigned int)(attr & 0x0f) << 8) |
-           ((unsigned int)((attr >> 4) & 0x0f) << 12) |
+    return ((unsigned int)mini_slot[attr & 0x0f] << 8) |
+           ((unsigned int)mini_slot[(attr >> 4) & 0x0f] << 12) |
            (unsigned int)(unsigned char)ch;
 }
 
 static int mini_glyph(int ch)
 {
     switch (ch) {
-    case TUI_CH_HLINE: case TUI_CH_DHLINE: return 0xc4;
-    case TUI_CH_VLINE: case TUI_CH_DVLINE: return 0xb3;
-    case TUI_CH_TL: case TUI_CH_DTL: return 0xda;
-    case TUI_CH_TR: case TUI_CH_DTR: return 0xbf;
-    case TUI_CH_BL: case TUI_CH_DBL: return 0xc0;
-    case TUI_CH_BR: case TUI_CH_DBR: return 0xd9;
+    case TUI_CH_HLINE: return 0xc4;
+    case TUI_CH_VLINE: return 0xb3;
+    case TUI_CH_TL: return 0xda;
+    case TUI_CH_TR: return 0xbf;
+    case TUI_CH_BL: return 0xc0;
+    case TUI_CH_BR: return 0xd9;
+    case TUI_CH_DHLINE: return 0xcd;
+    case TUI_CH_DVLINE: return 0xba;
+    case TUI_CH_DTL: return 0xc9;
+    case TUI_CH_DTR: return 0xbb;
+    case TUI_CH_DBL: return 0xc8;
+    case TUI_CH_DBR: return 0xbc;
     case TUI_CH_LTEE: return 0xc3;
     case TUI_CH_RTEE: return 0xb4;
     case TUI_CH_TTEE: return 0xc2;
@@ -49,6 +66,8 @@ static int mini_glyph(int ch)
     case TUI_CH_RIGHT_TRIANGLE: return 0x10;
     case TUI_CH_SCROLL_TRACK: return 0xb0;
     case TUI_CH_SCROLL_THUMB: return 0xdb;
+    case TUI_CH_CHECK: return 0xfb;
+    case TUI_CH_BULLET: return 0x07;
     default: return (unsigned char)ch;
     }
 }
@@ -130,8 +149,9 @@ int tui_console_init(void)
     };
     int i;
 
-    for (i = 0; i < 16; ++i)
-        MINI_VIDEO_PALETTE[i] = palette[i];
+    /* Downwards, so magenta (5) is written after light magenta (13). */
+    for (i = 15; i >= 0; --i)
+        MINI_VIDEO_PALETTE[mini_slot[i]] = palette[i];
     for (i = 0; i < MINI_CELLS; ++i)
         MINI_TEXT_RAM[i] = mini_cell(' ', 0x07);
 

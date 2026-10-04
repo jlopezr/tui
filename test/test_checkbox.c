@@ -58,7 +58,7 @@ static void test_drawing_and_small_widths(void)
 
     tui_checkbox_set_checked(&checkbox, 1);
     tui_draw(&desktop);
-    CHECK(test_cell_chars[2][3] == 'x');
+    CHECK(test_cell_chars[2][3] == TUI_CH_CHECK);
 
     tui_checkbox_init(&checkbox, 0, 4, 1, "");
     tui_draw(&desktop);

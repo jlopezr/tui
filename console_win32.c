@@ -99,23 +99,29 @@ static WCHAR tui_win32_glyph(int ch)
 {
     switch (ch) {
     case TUI_CH_HLINE:
-    case TUI_CH_DHLINE:
         return 0x2500;
     case TUI_CH_VLINE:
-    case TUI_CH_DVLINE:
         return 0x2502;
     case TUI_CH_TL:
-    case TUI_CH_DTL:
         return 0x250c;
     case TUI_CH_TR:
-    case TUI_CH_DTR:
         return 0x2510;
     case TUI_CH_BL:
-    case TUI_CH_DBL:
         return 0x2514;
     case TUI_CH_BR:
-    case TUI_CH_DBR:
         return 0x2518;
+    case TUI_CH_DHLINE:
+        return 0x2550;
+    case TUI_CH_DVLINE:
+        return 0x2551;
+    case TUI_CH_DTL:
+        return 0x2554;
+    case TUI_CH_DTR:
+        return 0x2557;
+    case TUI_CH_DBL:
+        return 0x255a;
+    case TUI_CH_DBR:
+        return 0x255d;
     case TUI_CH_LTEE:
         return 0x251c;
     case TUI_CH_RTEE:
@@ -138,6 +144,10 @@ static WCHAR tui_win32_glyph(int ch)
         return 0x2592;
     case TUI_CH_SCROLL_THUMB:
         return 0x2588;
+    case TUI_CH_CHECK:
+        return 0x221a;
+    case TUI_CH_BULLET:
+        return 0x2022;
     default:
         return (WCHAR)(unsigned char)ch;
     }

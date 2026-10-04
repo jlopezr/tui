@@ -37,7 +37,7 @@ static void combobox_draw(TuiControl *control, TuiDraw *draw)
         tui_putc(draw, control->width - 1, 0, ']', attr);
 
     if (control->width > 2)
-        tui_putc(draw, control->width - 2, 0, 'v', attr);
+        tui_putc(draw, control->width - 2, 0, TUI_CH_DOWN_TRIANGLE, attr);
 
     if (control->width <= 3 ||
         combo->selected < 0 ||

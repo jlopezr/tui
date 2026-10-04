@@ -139,7 +139,7 @@ static void test_viewport_width_and_drawing(void)
 
     CHECK(test_cell_chars[2][2] == '[');
     CHECK(test_cell_chars[2][3] == 'S');
-    CHECK(test_cell_chars[2][10] == 'v');
+    CHECK(test_cell_chars[2][10] == TUI_CH_DOWN_TRIANGLE);
     CHECK(test_cell_chars[2][11] == ']');
 
     CHECK(test_key(&desktop, TUI_KEY_ENTER));

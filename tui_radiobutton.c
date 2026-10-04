@@ -34,7 +34,7 @@ static void radiobutton_draw(TuiControl *control, TuiDraw *draw)
     tui_putc(draw, 0, 0, '(', attr);
 
     if (control->width > 1)
-        tui_putc(draw, 1, 0, radio->checked ? 'o' : ' ', attr);
+        tui_putc(draw, 1, 0, radio->checked ? TUI_CH_BULLET : ' ', attr);
 
     if (control->width > 2)
         tui_putc(draw, 2, 0, ')', attr);
