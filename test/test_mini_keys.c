@@ -881,7 +881,14 @@ static void test_pending_menus(void)
     CHECK(menubar.active);
     MENU_STEP_KEY(TUI_KEY_DOWN);
     CHECK(menubar.popup.control.parent != 0);
-    MENU_STEP_KEY(TUI_KEY_DOWN);
+
+    /* Moving the highlight touches two rows of the popup, not the whole popup. */
+    CHECK(test_key(&w.desktop, TUI_KEY_DOWN));
+    CHECK(w.desktop.dirty_count >= 1 && w.desktop.dirty_count <= 2);
+    CHECK(w.desktop.dirty[0][3] - w.desktop.dirty[0][1] <= 2 ||
+          w.desktop.dirty_count == 2);
+    CHECK(pending_equals_full(&w.desktop));
+
     MENU_STEP_KEY(TUI_KEY_DOWN);
     MENU_STEP_KEY(TUI_KEY_UP);
     MENU_STEP_KEY(TUI_KEY_RIGHT);

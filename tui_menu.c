@@ -202,8 +202,16 @@ static void tui_popup_set_selected(TuiPopupMenu *popup, int item)
     if (item == popup->selected)
         return;
 
+    /* Only the row that was highlighted and the one that is now (item i is row i + 1). */
+    if (popup->selected >= 0)
+        tui_invalidate_rect(&popup->control, 0, popup->selected + 1,
+                            popup->control.width, 1);
+
+    if (item >= 0)
+        tui_invalidate_rect(&popup->control, 0, item + 1,
+                            popup->control.width, 1);
+
     popup->selected = item;
-    tui_invalidate(&popup->control);
 }
 
 /*
