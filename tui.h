@@ -213,6 +213,16 @@ struct TuiDesktop {
     int cursor_visible;
     int cursor_x;
     int cursor_y;
+
+    /*
+     * Control that handled the last key event (0 if none, or if it was
+     * handled by a global control, TAB navigation or the mouse). Lets an
+     * application redraw only the part of the screen that can have changed.
+     */
+    TuiControl *last_handler;
+
+    /* Set while tui_draw_region() works: controls outside it are skipped. */
+    int partial_draw;
 };
 
 
@@ -370,6 +380,31 @@ void tui_desktop_clear_capture(TuiDesktop *desktop);
  * Main UI operations
  */
 void tui_draw(TuiDesktop *desktop);
+
+/*
+ * Partial redraw. tui_draw() rewrites the whole screen, which is slow on small
+ * machines. An application that knows what changed can instead call
+ *
+ *     tui_draw_begin(desktop);
+ *     tui_draw_region(desktop, x1, y1, x2, y2);    (one or more times)
+ *     tui_draw_end(desktop);
+ *
+ * Only cells inside the rectangles (screen coordinates, x2/y2 exclusive) are
+ * written, and controls that do not intersect them are not drawn at all.
+ * Everything that intersects is still drawn in z-order, so overlapping windows
+ * come out right. The result equals a full tui_draw() as long as nothing
+ * outside the rectangles changed: the caller must include whatever it changed.
+ */
+void tui_draw_begin(TuiDesktop *desktop);
+void tui_draw_region(TuiDesktop *desktop, int x1, int y1, int x2, int y2);
+void tui_draw_end(TuiDesktop *desktop);
+
+/* Nearest window containing 'control' (or 'control' itself), or 0. */
+TuiControl *tui_window_of(TuiControl *control);
+
+/* Screen rectangle of a control: x1,y1 inclusive, x2,y2 exclusive. */
+void tui_control_rect(TuiControl *control,
+                      int *x1, int *y1, int *x2, int *y2);
 
 /* Request the cursor at local (x,y); ignored if clipped. */
 void tui_draw_cursor(TuiDraw *draw, int x, int y);

@@ -1,0 +1,17 @@
+# Teclado espanol por INPUT, en un cuadro Edit de la demo (mini-sim-input).
+# Cada tecla es una pulsacion completa: sin repeticion en el simulador, donde un
+# "frame" es una instruccion. Esc cierra la demo.
+@0 keyboard connect
+@0 mouse connect
+@20000000 key press SEMICOLON
++200000 key press LSHIFT SEMICOLON
++200000 key press QUOTE
++200000 key press A
++200000 key press LSHIFT QUOTE
++200000 key press U
++200000 key press RALT 2
++200000 key press LSHIFT 1
++200000 key press LSHIFT MINUS
++200000 key press EQUAL
++200000 key press COMMA
++200000 key press ESC

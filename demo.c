@@ -749,11 +749,44 @@ static TuiStatusItem status_items[] = {
     { "Run",  TUI_KEY_F5, CMD_RUN   }
 };
 
+/*
+ * What the main loop has to redraw before waiting for the next event.
+ *
+ * A full redraw rewrites the whole screen, which costs over a million
+ * instructions on the MiniCPU -- a third of a second per keystroke. Most events
+ * change very little, so the loop asks for the least that is still correct.
+ */
+#define REDRAW_NONE     0
+#define REDRAW_WINDOW   1
+#define REDRAW_FULL     2
+
+/* Redraw one window and the status bar, which every key event may update. */
+static void demo_draw_window(App *app, TuiControl *window)
+{
+    int x1;
+    int y1;
+    int x2;
+    int y2;
+
+    tui_draw_begin(&app->desktop);
+
+    tui_control_rect(window, &x1, &y1, &x2, &y2);
+    tui_draw_region(&app->desktop, x1, y1, x2, y2);
+
+    tui_control_rect(&app->status_bar.control, &x1, &y1, &x2, &y2);
+    tui_draw_region(&app->desktop, x1, y1, x2, y2);
+
+    tui_draw_end(&app->desktop);
+}
+
 int main(void)
 {
     /* Static: ~15 KB, bigger than the 8 KB stack of the MiniCPU start-up code. */
     static App app;
     TuiEvent event;
+    int redraw;
+    int handled;
+    TuiControl *redraw_window;
 
     if (!tui_init())
         return 1;
@@ -775,21 +808,49 @@ int main(void)
 
     app.running = 1;
 
-    while (app.running) {
-        tui_draw(&app.desktop);
-        tui_read_event(&event);
+    redraw = REDRAW_FULL;
+    redraw_window = 0;
 
+    while (app.running) {
+        if (redraw == REDRAW_FULL)
+            tui_draw(&app.desktop);
+        else if (redraw == REDRAW_WINDOW)
+            demo_draw_window(&app, redraw_window);
+        tui_read_event(&event);
+        redraw = REDRAW_FULL;
         if (event.type == TUI_EV_KEY &&
             event.key == TUI_KEY_ESCAPE &&
             app.desktop.capture == 0) {
             app.running = 0;
         } else {
             note_control_event(&app, &event);
-            tui_dispatch(&app.desktop, &event);
+            handled = tui_dispatch(&app.desktop, &event);
+
+            if (!handled &&
+                event.type == TUI_EV_MOUSE &&
+                event.mouse_action == TUI_MOUSE_MOVE &&
+                app.desktop.capture == 0) {
+                /* Nothing reacted: the pointer is the console's business. */
+                redraw = REDRAW_NONE;
+            } else if (handled &&
+                       event.type == TUI_EV_KEY &&
+                       app.desktop.last_handler != 0) {
+                /*
+                 * An ordinary control took the key (typing, arrows in a
+                 * list...): only its window can have changed. Focus
+                 * changes, menus and shortcuts do not leave a handler, so
+                 * they still get a full redraw.
+                 */
+                redraw_window = tui_window_of(app.desktop.last_handler);
+                if (redraw_window != 0)
+                    redraw = REDRAW_WINDOW;
+            }
         }
 
-        if (event.type == TUI_EV_COMMAND)
+        if (event.type == TUI_EV_COMMAND) {
             dispatch_command(&app, event.command);
+            redraw = REDRAW_FULL;      /* a command can change anything */
+        }
     }
 
     tui_shutdown();

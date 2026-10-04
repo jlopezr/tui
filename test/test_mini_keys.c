@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "test_support.h"
 #include "../mini_keys.h"
 
@@ -276,8 +278,130 @@ static void test_edit_accepts_what_the_console_prints(void)
     test_console_8bit = 0;
 }
 
+/*
+ * Partial redraw must give the same screen as a full one, while touching only
+ * the cells of the region it was asked for.
+ */
+typedef struct {
+    int chars[TEST_HEIGHT][TEST_WIDTH];
+    int attrs[TEST_HEIGHT][TEST_WIDTH];
+} Screen;
+
+static void screen_save(Screen *s)
+{
+    memcpy(s->chars, test_cell_chars, sizeof(s->chars));
+    memcpy(s->attrs, test_cell_attrs, sizeof(s->attrs));
+}
+
+static int screens_equal(const Screen *a, const Screen *b)
+{
+    return memcmp(a->chars, b->chars, sizeof(a->chars)) == 0 &&
+           memcmp(a->attrs, b->attrs, sizeof(a->attrs)) == 0;
+}
+
+typedef struct {
+    TuiDesktop desktop;
+    TuiWindow left;
+    TuiWindow right;
+    TuiEdit edit_left;
+    TuiEdit edit_right;
+    TuiLabel label;
+    char buffer_left[16];
+    char buffer_right[16];
+} Scene;
+
+/* Two windows with an Edit each, plus a label that overlaps the left one. */
+static void scene_build(Scene *s)
+{
+    s->buffer_left[0] = '\0';
+    s->buffer_right[0] = '\0';
+    test_init_desktop(&s->desktop);
+    tui_window_init(&s->left, 1, 1, 24, 6, "Left");
+    tui_window_init(&s->right, 30, 1, 24, 6, "Right");
+    tui_edit_init(&s->edit_left, 1, 1, 20, s->buffer_left, 16);
+    tui_edit_init(&s->edit_right, 1, 1, 20, s->buffer_right, 16);
+    tui_label_init(&s->label, 2, 20, "Status");
+    tui_add(&s->desktop.control, &s->left.control);
+    tui_add(&s->desktop.control, &s->right.control);
+    tui_add(&s->desktop.control, &s->label.control);
+    tui_add(&s->left.control, &s->edit_left.control);
+    tui_add(&s->right.control, &s->edit_right.control);
+    tui_desktop_set_focus(&s->desktop, &s->edit_left.control);
+}
+
+static void test_partial_redraw_matches_full(void)
+{
+    Scene full;
+    Scene part;
+    Screen after_full;
+    Screen after_partial;
+    Screen before;
+    int x1, y1, x2, y2;
+    int x, y;
+    int outside_untouched;
+
+    /* Reference: type, then redraw everything. */
+    scene_build(&full);
+    tui_draw(&full.desktop);
+    test_key(&full.desktop, 'h');
+    test_key(&full.desktop, 'i');
+    tui_draw(&full.desktop);
+    screen_save(&after_full);
+
+    /* Same keys, but redraw only the window that handled them. */
+    scene_build(&part);
+    tui_draw(&part.desktop);
+    screen_save(&before);
+    test_key(&part.desktop, 'h');
+    CHECK(part.desktop.last_handler == &part.edit_left.control);
+    test_key(&part.desktop, 'i');
+    CHECK(tui_window_of(part.desktop.last_handler) == &part.left.control);
+
+    tui_control_rect(&part.left.control, &x1, &y1, &x2, &y2);
+    tui_draw_begin(&part.desktop);
+    tui_draw_region(&part.desktop, x1, y1, x2, y2);
+    tui_draw_end(&part.desktop);
+    screen_save(&after_partial);
+
+    CHECK(screens_equal(&after_full, &after_partial));
+
+    /* And it really was partial: nothing outside the window was rewritten. */
+    outside_untouched = 1;
+    for (y = 0; y < TEST_HEIGHT; ++y)
+        for (x = 0; x < TEST_WIDTH; ++x)
+            if ((x < x1 || x >= x2 || y < y1 || y >= y2) &&
+                (after_partial.chars[y][x] != before.chars[y][x] ||
+                 after_partial.attrs[y][x] != before.attrs[y][x]))
+                outside_untouched = 0;
+    CHECK(outside_untouched);
+
+    /* The cursor follows the edit, which was inside the region. */
+    CHECK(part.desktop.cursor_visible);
+}
+
+static void test_last_handler_is_cleared(void)
+{
+    Scene s;
+
+    scene_build(&s);
+    tui_draw(&s.desktop);
+    test_key(&s.desktop, 'x');
+    CHECK(s.desktop.last_handler != 0);
+
+    /* TAB is handled by the desktop itself: no control to point at. */
+    test_key(&s.desktop, TUI_KEY_TAB);
+    CHECK(s.desktop.last_handler == 0);
+
+    /* A key nobody handles leaves nothing behind either. */
+    test_key(&s.desktop, TUI_KEY_F12);
+    CHECK(s.desktop.last_handler == 0);
+}
+
 void test_mini_keys_suite(void)
 {
+    test_run_case("partial redraw equals full redraw",
+                  test_partial_redraw_matches_full);
+    test_run_case("dispatch clears last handler", test_last_handler_is_cleared);
     test_run_case("edit accepts 8-bit console text",
                   test_edit_accepts_what_the_console_prints);
     test_run_case("mini keys letters", test_letters);

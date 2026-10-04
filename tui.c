@@ -82,12 +82,26 @@ void tui_draw_cursor(TuiDraw *draw, int x, int y)
 void tui_text(TuiDraw *d, int x, int y,
                      const char *s, int attr)
 {
+    int sx;
+    int sy;
+
     if (s == 0)
         return;
 
-    while (*s != 0) {
-        tui_putc(d, x, y, (unsigned char)*s, attr);
-        ++x;
+    /*
+     * Same cells as calling tui_putc for each character, but the row is
+     * clipped once. On the MiniCPU every call costs dozens of instructions
+     * and a full redraw is mostly text and fills.
+     */
+    sx = d->ox + x;
+    sy = d->oy + y;
+    if (sy < d->y1 || sy >= d->y2)
+        return;
+
+    while (*s != 0 && sx < d->x2) {
+        if (sx >= d->x1)
+            tui_console_cell(sx, sy, (unsigned char)*s, attr);
+        ++sx;
         ++s;
     }
 }
@@ -97,10 +111,20 @@ void tui_fill(TuiDraw *d, int x, int y,
 {
     int xx;
     int yy;
+    int x1;
+    int y1;
+    int x2;
+    int y2;
 
-    for (yy = 0; yy < h; ++yy) {
-        for (xx = 0; xx < w; ++xx) {
-            tui_putc(d, x + xx, y + yy, ch, attr);
+    /* Intersect with the clip rectangle once instead of per cell. */
+    x1 = tui_max(d->ox + x, d->x1);
+    y1 = tui_max(d->oy + y, d->y1);
+    x2 = tui_min(d->ox + x + w, d->x2);
+    y2 = tui_min(d->oy + y + h, d->y2);
+
+    for (yy = y1; yy < y2; ++yy) {
+        for (xx = x1; xx < x2; ++xx) {
+            tui_console_cell(xx, yy, ch, attr);
         }
     }
 }
@@ -381,6 +405,9 @@ void tui_desktop_init(TuiDesktop *desktop)
     desktop->cursor_visible = 0;
     desktop->cursor_x = 0;
     desktop->cursor_y = 0;
+
+    desktop->last_handler = 0;
+    desktop->partial_draw = 0;
 }
 
 void tui_desktop_set_focus(TuiDesktop *desktop,
@@ -605,6 +632,18 @@ static void tui_draw_tree(TuiControl *control,
         return;
     
     /*
+     * Partial redraw: a control (and so its children, which are clipped to
+     * it) that does not touch the region draws nothing, so skip its whole
+     * subtree. Costs four comparisons instead of the draw.
+     */
+    if (draw->desktop != 0 && draw->desktop->partial_draw &&
+        (draw->ox >= draw->x2 ||
+         draw->ox + control->width <= draw->x1 ||
+         draw->oy >= draw->y2 ||
+         draw->oy + control->height <= draw->y1))
+        return;
+
+    /*
      * Calculate child geometry before drawing.
      */
     tui_layout_children(control);
@@ -635,10 +674,8 @@ static void tui_draw_tree(TuiControl *control,
     }
 }
 
-void tui_draw(TuiDesktop *desktop)
+void tui_draw_begin(TuiDesktop *desktop)
 {
-    TuiDraw draw;
-
     desktop->control.width =
         tui_console_width();
 
@@ -646,21 +683,36 @@ void tui_draw(TuiDesktop *desktop)
         tui_console_height();
 
     desktop->cursor_visible = 0;
+}
+
+void tui_draw_region(TuiDesktop *desktop, int x1, int y1, int x2, int y2)
+{
+    TuiDraw draw;
 
     draw.desktop = desktop;
 
     draw.ox = 0;
     draw.oy = 0;
 
-    draw.x1 = 0;
-    draw.y1 = 0;
+    draw.x1 = tui_max(x1, 0);
+    draw.y1 = tui_max(y1, 0);
 
-    draw.x2 = desktop->control.width;
-    draw.y2 = desktop->control.height;
+    draw.x2 = tui_min(x2, desktop->control.width);
+    draw.y2 = tui_min(y2, desktop->control.height);
+
+    /* A region covering the whole screen is just the normal full draw. */
+    desktop->partial_draw = draw.x1 > 0 || draw.y1 > 0 ||
+                            draw.x2 < desktop->control.width ||
+                            draw.y2 < desktop->control.height;
 
     tui_draw_tree(&desktop->control,
                   &draw);
 
+    desktop->partial_draw = 0;
+}
+
+void tui_draw_end(TuiDesktop *desktop)
+{
     tui_console_cursor(desktop->cursor_x,
                        desktop->cursor_y,
                        desktop->cursor_visible);
@@ -668,6 +720,35 @@ void tui_draw(TuiDesktop *desktop)
     tui_console_present();
 }
 
+void tui_draw(TuiDesktop *desktop)
+{
+    tui_draw_begin(desktop);
+
+    tui_draw_region(desktop,
+                    0, 0,
+                    desktop->control.width,
+                    desktop->control.height);
+
+    tui_draw_end(desktop);
+}
+
+TuiControl *tui_window_of(TuiControl *control)
+{
+    for (; control != 0; control = control->parent) {
+        if (control->cls == &tui_window_class)
+            return control;
+    }
+
+    return 0;
+}
+
+void tui_control_rect(TuiControl *control,
+                      int *x1, int *y1, int *x2, int *y2)
+{
+    tui_control_screen_pos(control, x1, y1);
+    *x2 = *x1 + control->width;
+    *y2 = *y1 + control->height;
+}
 
 /*
  * ------------------------------------------------------------
@@ -889,6 +970,9 @@ int tui_dispatch(TuiDesktop *desktop,
 {
     TuiControl *target;
 
+    /* Only a key handled by an ordinary control leaves a handler behind. */
+    desktop->last_handler = 0;
+
     if (event->type == TUI_EV_MOUSE)
         return tui_dispatch_mouse(desktop, event);
 
@@ -903,8 +987,10 @@ int tui_dispatch(TuiDesktop *desktop,
                 target->cls->event != 0) {
 
                 if (target->cls->event(target,
-                                       event))
+                                       event)) {
+                    desktop->last_handler = target;
                     return 1;
+                }
             }
 
             target = target->parent;
@@ -943,8 +1029,10 @@ int tui_dispatch(TuiDesktop *desktop,
             target->cls->event != 0) {
 
             if (target->cls->event(target,
-                                   event))
+                                   event)) {
+                desktop->last_handler = target;
                 return 1;
+            }
         }
 
         target = target->parent;

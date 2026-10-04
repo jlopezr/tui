@@ -84,6 +84,14 @@ mini-sim: $(MINI_BIN)
 	$(PS) $(TOOLS)\cpusim.ps1 $(MINI_BIN) --serial-input _build\keys.bin --console-output _build\screen.txt --run-limit $(MINI_SIM_MAX)
 	@type _build\screen.txt
 
+# Teclado espanol por INPUT: el simulador escribe n con tilde, acentos, @, !, ?...
+# en el cuadro Edit y muestra su fila. El simulador necesita la serie aunque no se
+# use, porque la demo sondea tambien la UART.
+mini-sim-input: $(MINI_BIN)
+	@powershell -NoProfile -Command "[IO.File]::WriteAllBytes('_build\empty.bin', [byte[]]@())"
+	$(PS) $(TOOLS)\cpusim.ps1 $(MINI_BIN) --serial-input _build\empty.bin --keyboard --mouse --input-script test\mini_input_es.txt --console-output _build\screen_input.txt --run-limit 150000000
+	@powershell -NoProfile -Command "(Get-Content -Encoding UTF8 _build\screen_input.txt)[13]"
+
 mini-run: $(MINI_BIN)
 	$(PS) $(TOOLS)\run-board.ps1 --prototype $(MINI_PROTOTYPE) --program $(MINI_BIN) $(MINI_PORT)
 

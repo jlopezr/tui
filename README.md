@@ -241,6 +241,54 @@ terminar. A mano:
 (y lo sube si no), carga el `.bin` y arranca la CPU. Para manejar la demo hace
 falta un terminal serie en el mismo puerto, que `run-board` libera al terminar.
 
+### Teclado y ratón en la MiniCPU
+
+`console_mini.c` lee el bloque INPUT (`mmio.md` §25) además de la UART. Las dos
+entradas conviven: lo que llegue antes. La entrada nueva sale de
+`monitor.py input` (el teclado y el ratón del PC, sin nada conectado a la FPGA).
+Si `SYSTEM.DEVICES` no declara INPUT, la consola funciona como antes, solo con
+serie.
+
+- **Teclado español** (`mini_keys.h`). INPUT entrega teclas físicas; la tabla
+  las convierte en CP437: `ñ Ñ ç Ç ¡ ¿ º ª`, AltGr (`@ # | ~ [ ] { } \`), acentos
+  muertos (`´ ` ^ ¨` + vocal), teclado numérico, F1–F12 y navegación (Supr,
+  Inicio, Fin, RePág, AvPág, Insert, Shift+Tab). Está en un `.h` con funciones
+  `static` para que lo ejecute la placa y lo pruebe el PC (`test/test_mini_keys.c`).
+  Las mayúsculas acentuadas que CP437 no tiene (Á Í Ó Ú) salen sin acento.
+- **Repetición de tecla**: el contrato no define typematic, así que la hace la
+  consola (400 ms y luego unas 30 por segundo), mirando `KEY_STATE`.
+- **Ratón**: relativo, 1 punto = 1 píxel de la pantalla de 640×480. El puntero
+  invierte los colores de la celda; el doble clic (500 ms, misma celda) lo
+  calcula la consola. El TUI solo se entera cuando cambia la celda o un botón.
+- **Texto de 8 bits**: los controles preguntan a la consola qué es imprimible
+  (`tui_console_printable`). Los backends de PC siguen en ASCII; la MiniCPU
+  admite 128..255.
+
+Probar sin placa: `nmake /f Makefile.msvc mini-sim-input`.
+
+#### Por qué importa el redibujado parcial
+
+`tui_draw()` reescribe las 2400 celdas, y en la MiniCPU cuesta ~1,3 millones de
+instrucciones (casi 0,4 s: mide la placa con `CYCLES`/`RETIRED`; el 74 % son
+esperas de memoria, no de MMIO). Con teclado y ratón cada evento lo disparaba y
+la demo iba a ~3 eventos por segundo. Ahora:
+
+- un **movimiento de ratón** que nadie gestiona no redibuja nada (1 ms);
+- una **tecla** gestionada por un control redibuja solo su ventana y la barra de
+  estado (`tui_draw_begin` / `tui_draw_region` / `tui_draw_end`; el núcleo se
+  salta los controles que no tocan la región), unos 36 ms;
+- lo demás —foco, menús, atajos, comandos, clics— sigue siendo redibujado completo.
+
+`tui_dispatch` deja en `desktop->last_handler` el control que gestionó la tecla
+(0 si fue un atajo global, TAB o el ratón); `tui_window_of()` da su ventana.
+`tui_draw()` no cambia. `tui_fill` y `tui_text` recortan el rectángulo una vez
+en vez de celda a celda.
+
+**Trampa de `mini-lcc`**: `(unsigned char)x` sobre un `int` no enmascara. Un
+carácter ≥128 leído de un buffer de `char` llega con el signo extendido
+(`0xFFFFFFA4`) y la RAM de texto lo rechaza con un error de MMIO. En
+`console_mini.c` se enmascara con `& 0xff`.
+
 La pila de arranque de `mini-lcc` es de 8 KiB: las estructuras grandes no pueden
 ser locales de `main` (por eso `App` es `static` en `demo.c`). Si la pila se
 desborda pisa el código y la CPU se para con error 5 (codificación inválida).
