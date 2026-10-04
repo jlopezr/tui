@@ -833,6 +833,80 @@ static void test_double_click_is_also_a_press(void)
 }
 
 /*
+ * Menus say what they change: the bar's row and the popup's rectangle, never the
+ * whole screen, and what is on screen afterwards is what a full repaint would draw.
+ * The popup is over a window, so closing it has to put that window back.
+ */
+#define MENU_STEP_KEY(k) \
+    do { \
+        CHECK(test_key(&w.desktop, (k))); \
+        CHECK(!w.desktop.dirty_all); \
+        CHECK(pending_equals_full(&w.desktop)); \
+    } while (0)
+
+#define MENU_STEP_MOUSE(x, y, action) \
+    do { \
+        test_mouse_action(&w.desktop, (x), (y), (action), &event); \
+        CHECK(!w.desktop.dirty_all); \
+        CHECK(pending_equals_full(&w.desktop)); \
+    } while (0)
+
+static void test_pending_menus(void)
+{
+    static TuiMenuItem file_items[] = {
+        { "New", 81, TUI_KEY_NONE, 0 },
+        { "-", 0, TUI_KEY_NONE, TUI_MENU_SEPARATOR },
+        { "Open", 82, TUI_KEY_NONE, 0 },
+        { "Quit", 83, TUI_KEY_NONE, 0 }
+    };
+    static TuiMenuItem edit_items[] = {
+        { "Copy", 91, TUI_KEY_NONE, 0 },
+        { "Paste a long entry", 92, TUI_KEY_NONE, 0 }
+    };
+    static TuiMenu menus[] = {
+        { "File", file_items, 4 },
+        { "Edit", edit_items, 2 }
+    };
+    Widgets w;
+    TuiMenuBar menubar;
+    TuiEvent event;
+
+    widgets_build(&w);
+    tui_menubar_init(&menubar, menus, 2);
+    tui_add(&w.desktop.control, &menubar.control);
+    tui_draw(&w.desktop);
+
+    /* With the keyboard: activate, open, move, change menu, leave. */
+    MENU_STEP_KEY(TUI_KEY_F10);
+    CHECK(menubar.active);
+    MENU_STEP_KEY(TUI_KEY_DOWN);
+    CHECK(menubar.popup.control.parent != 0);
+    MENU_STEP_KEY(TUI_KEY_DOWN);
+    MENU_STEP_KEY(TUI_KEY_DOWN);
+    MENU_STEP_KEY(TUI_KEY_UP);
+    MENU_STEP_KEY(TUI_KEY_RIGHT);
+    MENU_STEP_KEY(TUI_KEY_LEFT);
+    MENU_STEP_KEY(TUI_KEY_ESCAPE);
+    CHECK(!menubar.active);
+    CHECK(menubar.popup.control.parent == 0);
+
+    /* Enter on an item closes the menu and turns into a command. */
+    MENU_STEP_KEY(TUI_KEY_F10);
+    MENU_STEP_KEY(TUI_KEY_DOWN);
+    MENU_STEP_KEY(TUI_KEY_ENTER);
+    CHECK(!menubar.active);
+
+    /* With the mouse: press a title, hover over the items and the other title. */
+    MENU_STEP_MOUSE(2, 0, TUI_MOUSE_DOWN);
+    CHECK(menubar.active);
+    MENU_STEP_MOUSE(4, 2, TUI_MOUSE_MOVE);
+    MENU_STEP_MOUSE(4, 4, TUI_MOUSE_MOVE);
+    MENU_STEP_MOUSE(8, 0, TUI_MOUSE_MOVE);
+    MENU_STEP_MOUSE(60, 20, TUI_MOUSE_DOWN);
+    CHECK(!menubar.active);
+}
+
+/*
  * Taking a window out of the tree lets go of everything it was holding: the focus
  * and the capture, an open list (a window of the desktop, not of this window), a
  * drag and a press in progress.
@@ -1129,6 +1203,7 @@ void test_mini_keys_suite(void)
                   test_panel_groups_without_a_frame);
     test_run_case("a double click is also a press",
                   test_double_click_is_also_a_press);
+    test_run_case("pending redraw: menus", test_pending_menus);
     test_run_case("removing a window releases what it holds",
                   test_remove_releases_what_the_subtree_holds);
     test_run_case("combo box closed from outside cancels",

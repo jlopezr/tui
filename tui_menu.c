@@ -193,6 +193,20 @@ static void tui_menubar_select(TuiMenuBar *bar, int index);
 static int tui_menubar_item_x(TuiMenuBar *bar, int index);
 
 /*
+ * What changes on screen is the highlighted title (the bar's row) or the highlighted
+ * item (the popup): each one says so, and the rest of the screen is not repainted.
+ * Opening and closing the popup are covered by tui_add() and tui_remove().
+ */
+static void tui_popup_set_selected(TuiPopupMenu *popup, int item)
+{
+    if (item == popup->selected)
+        return;
+
+    popup->selected = item;
+    tui_invalidate(&popup->control);
+}
+
+/*
  * Menu title under screen (x,y), or -1.
  * Uses the same geometry as menubar_draw().
  */
@@ -307,7 +321,7 @@ static int popup_mouse(TuiPopupMenu *popup, TuiEvent *event)
             return tui_popup_activate(popup, event);
         }
 
-        popup->selected = item;
+        tui_popup_set_selected(popup, item);
         return 1;
     }
 
@@ -340,6 +354,9 @@ static int popup_event(TuiControl *control, TuiEvent *event)
     popup = (TuiPopupMenu *)control;
     bar = popup->owner;
 
+    /* Whatever does not change anything (a separator, a key at the end) repaints nothing. */
+    tui_event_done(control);
+
     if (event->type == TUI_EV_MOUSE)
         return popup_mouse(popup, event);
 
@@ -350,21 +367,23 @@ static int popup_event(TuiControl *control, TuiEvent *event)
 
     case TUI_KEY_UP:
 
-        popup->selected =
+        tui_popup_set_selected(
+            popup,
             tui_menu_next_selectable(
                 popup->menu,
                 popup->selected,
-                -1);
+                -1));
 
         return 1;
 
     case TUI_KEY_DOWN:
 
-        popup->selected =
+        tui_popup_set_selected(
+            popup,
             tui_menu_next_selectable(
                 popup->menu,
                 popup->selected,
-                1);
+                1));
 
         return 1;
 
@@ -480,6 +499,7 @@ void tui_menubar_activate(TuiMenuBar *bar)
 
     bar->active = 1;
     bar->selected = 0;
+    tui_invalidate(&bar->control);
 
     /*
      * Capture the bar before a popup exists.
@@ -507,6 +527,7 @@ static void tui_menubar_open(TuiMenuBar *bar)
     menu = &bar->menus[bar->selected];
 
     bar->active = 1;
+    tui_invalidate(&bar->control);
 
     bar->popup.menu = menu;
     bar->popup.selected =
@@ -556,6 +577,7 @@ static void tui_menubar_close(TuiMenuBar *bar)
     tui_desktop_clear_capture(desktop);
 
     bar->active = 0;
+    tui_invalidate(&bar->control);
 }
 
 static void tui_menubar_select(TuiMenuBar *bar, int index)
@@ -578,6 +600,7 @@ static void tui_menubar_select(TuiMenuBar *bar, int index)
         tui_menubar_close(bar);
 
     bar->selected = index;
+    tui_invalidate(&bar->control);
 
     if (was_open)
         tui_menubar_open(bar);
@@ -654,7 +677,10 @@ static int menubar_mouse(TuiMenuBar *bar, TuiEvent *event)
     /* Keyboard-activated bar without popup: hover moves the title. */
     if (event->mouse_action == TUI_MOUSE_MOVE &&
         bar->active && title >= 0) {
-        bar->selected = title;
+        if (title != bar->selected) {
+            bar->selected = title;
+            tui_invalidate(&bar->control);
+        }
         return 1;
     }
 
@@ -667,6 +693,9 @@ static int menubar_event(TuiControl *control,
     TuiMenuBar *bar;
 
     bar = (TuiMenuBar *)control;
+
+    /* The bar says what it changes; an accelerator turned into a command changes nothing. */
+    tui_event_done(control);
 
     if (event->type == TUI_EV_MOUSE)
         return menubar_mouse(bar, event);
