@@ -1,0 +1,30 @@
+# La demo "Controls" de z.tui en la placa, con teclado y raton por INPUT:
+#
+#   powershell tools\board-load.ps1 -p 30 --program z.tui\_build\tui_mini.bin
+#   python 30.fpga-cpu-console\monitor.py input --script z.tui\test\board_controls.txt
+#
+# Los instantes son milisegundos (tools/board_script.py). La demo arranca con el
+# foco en el cuadro Edit de la fila 13.
+@0     keyboard connect
++0     mouse connect
++300   expect row 13 contains "Type here"
+
+# Teclas: las letras salen igual en teclado espanol; ; es la n con tilde, y
+# AltGr+2 es la arroba.
++0     type "abc"
++0     key press SEMICOLON
++0     key down RALT
++0     key press 2
++0     key up RALT
++0     expect row 13 contains "Type hereabc"
++0     expect row 13 contains "@"
++0     expect row 29 contains "Control: Edit"
+
+# Raton: el checkbox "Mouse support" (columna 16, fila 7).
++0     click 17 7
++0     wait row 29 contains "Mouse support changed" 2000
++0     expect row 7 contains "[√]"
+
+# Y vuelta a marcarlo como estaba.
++0     click 17 7
++0     wait row 7 contains "[ ]" 2000
