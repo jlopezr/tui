@@ -138,7 +138,10 @@ repintado y de manejo del evento.
 - Falta medir en la placa, con el ratón del PC (`monitor.py input`), que añade su
   propio retardo (~16 ms por ida y vuelta).
 - Validado en la placa (6/10/2026): el Editor (teclas, clic, foco) y el foco en el
-  ListBox van bien. El arrastre de ventanas con el ratón del PC sigue sin medirse.
+  ListBox van bien. Después, con la unión de TextArea y Editor (punto 19), el
+  repintado fino de ListBox y Edit (punto 18) y el marco de ventana sin repintar al
+  cambiar el foco: se ve bien. El arrastre de ventanas con el ratón del PC sigue sin
+  medirse.
 
 ## Preguntas
 
