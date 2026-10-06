@@ -558,6 +558,97 @@ void tui_console_cell(int x, int y, int ch, int attr)
 }
 
 /*
+ * Tramos de celdas (console.h). Escriben lo mismo que una llamada a tui_console_cell
+ * por celda, pero lo que es igual para todo el tramo se paga una vez: los limites de
+ * la pantalla, el indice de la fila, el atributo y el glifo (que dan el valor de la
+ * celda) y el ocultar el cursor y el puntero, que solo hace falta si alguna celda
+ * cambia. Una celda que ya muestra lo que se escribe cuesta comparar con la copia y
+ * seguir: unas 8 instrucciones en vez de unas 43 (el resto de la llamada es entrar
+ * y salir de la funcion).
+ */
+void tui_console_fill(int x, int y, int n, int ch, int attr)
+{
+    int index;
+    int packed;
+    int ready;
+    unsigned int value;
+
+    if (y < 0 || y >= MINI_HEIGHT)
+        return;
+    if (x < 0) {
+        n += x;
+        x = 0;
+    }
+    if (x + n > MINI_WIDTH)
+        n = MINI_WIDTH - x;
+    if (n <= 0)
+        return;
+
+    index = y * MINI_WIDTH + x;
+    packed = (ch & 0x1ff) | ((attr & 0xff) << 9);
+    ready = 0;
+    value = 0;
+
+    for (; n > 0; --n, ++index) {
+        if (mini_shadow[index] == packed)
+            continue;
+        mini_shadow[index] = packed;
+        if (!ready) {
+            mini_overlay_hide();
+            value = mini_cell(mini_glyph(ch), attr);
+            ready = 1;
+        }
+        MINI_TEXT_RAM[index] = value;
+    }
+}
+
+/*
+ * El caracter es un byte de la pantalla, asi que no pasa por mini_glyph (que solo
+ * traduce los abstractos, >= 0x100) y el valor de la celda es el del atributo con el
+ * byte debajo. Es `& 0xff` y no un cast: un char con signo llega extendido.
+ */
+void tui_console_text(int x, int y, const char *text, int n, int attr)
+{
+    int index;
+    int packed;
+    int ready;
+    int attr_bits;
+    int c;
+    unsigned int base;
+
+    if (y < 0 || y >= MINI_HEIGHT)
+        return;
+    if (x < 0) {
+        text -= x;
+        n += x;
+        x = 0;
+    }
+    if (x + n > MINI_WIDTH)
+        n = MINI_WIDTH - x;
+    if (n <= 0)
+        return;
+
+    index = y * MINI_WIDTH + x;
+    attr_bits = (attr & 0xff) << 9;
+    ready = 0;
+    base = 0;
+
+    for (; n > 0; --n, ++index, ++text) {
+        c = *text & 0xff;
+        packed = c | attr_bits;
+        if (mini_shadow[index] == packed)
+            continue;
+        mini_shadow[index] = packed;
+        if (!ready) {
+            mini_overlay_hide();
+            base = mini_cell(0, attr);
+            ready = 1;
+        }
+        MINI_TEXT_RAM[index] = base | (unsigned int)c;
+    }
+}
+
+/*
  * La siguiente tecla de la UART o de INPUT, la que este antes, o TUI_KEY_NONE si
  * no hay ninguna. tui_console_key() espera sondeando las dos: nunca bloquea en una.
  */

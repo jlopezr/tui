@@ -346,6 +346,28 @@ static void test_text_helpers_respect_the_clip(void)
     clear_test_rows();
     tui_chars(&draw, 0, 0, "abcdefghij", 6, 7);
     CHECK(strcmp(row_text(1, 4, 11), ".cdef..") == 0);
+
+    /* tui_text: cut on both sides, entirely left of the clip, and a short one. */
+    clear_test_rows();
+    tui_text(&draw, 0, 0, "abcdefghijkl", 7);
+    CHECK(strcmp(row_text(1, 0, 14), ".....cdefghi..") == 0);
+    clear_test_rows();
+    tui_text(&draw, 0, 0, "ab", 7);
+    CHECK(strcmp(row_text(1, 0, 14), "..............") == 0);
+    clear_test_rows();
+    tui_text(&draw, 4, 0, "abc", 7);
+    CHECK(strcmp(row_text(1, 5, 12), "..abc..") == 0);
+
+    /* tui_fill: a rectangle cut by the clip, and one that does not touch it. */
+    clear_test_rows();
+    tui_fill(&draw, 0, -1, 12, 3, '#', 7);
+    CHECK(strcmp(row_text(1, 0, 14), ".....#######..") == 0);
+    CHECK(strcmp(row_text(0, 0, 14), "..............") == 0);
+    CHECK(strcmp(row_text(2, 0, 14), "..............") == 0);
+    clear_test_rows();
+    tui_fill(&draw, 20, 0, 5, 1, '#', 7);
+    tui_fill(&draw, 0, 0, 0, 1, '#', 7);
+    CHECK(strcmp(row_text(1, 0, 14), "..............") == 0);
 }
 
 void test_core_suite(void)

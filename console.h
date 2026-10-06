@@ -119,6 +119,25 @@ int  tui_console_height(void);
 void tui_console_cell(int x, int y, int ch, int attr);
 
 /*
+ * The same thing for a run of cells in one row, so that what costs the same for
+ * every cell of the run is paid once: the screen bounds, the attribute, the glyph,
+ * the call. On the MiniCPU that is most of what a cell costs (about 43 instructions
+ * when it already shows what is written, against about 8 in a run).
+ *
+ *   tui_console_fill()  n cells from (x, y) with the same character, which may be an
+ *                       abstract one (TUI_CH_*).
+ *   tui_console_text()  the first n bytes of text from (x, y); no terminator is
+ *                       needed. They are bytes of the screen's character set, not
+ *                       abstract characters.
+ *
+ * Both clip against the screen. A backend that has nothing better to do with a run
+ * gets the loops over tui_console_cell() from tui.c; only the MiniCPU backend
+ * (TUI_BACKEND_MMIO) defines its own.
+ */
+void tui_console_fill(int x, int y, int n, int ch, int attr);
+void tui_console_text(int x, int y, const char *text, int n, int attr);
+
+/*
  * Input, in two forms over the same events:
  *
  *   tui_console_poll()  the next key (or TUI_KEY_MOUSE), or TUI_KEY_NONE if there

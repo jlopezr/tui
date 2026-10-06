@@ -54,6 +54,28 @@ static int tui_clip_point(const TuiDraw *d, int x, int y,
              *sy < d->y1 || *sy >= d->y2);
 }
 
+/*
+ * Runs of cells (console.h). The MiniCPU backend has its own, which is the reason
+ * for having them; any other backend gets these loops.
+ */
+#ifndef TUI_BACKEND_MMIO
+void tui_console_fill(int x, int y, int n, int ch, int attr)
+{
+    int i;
+
+    for (i = 0; i < n; ++i)
+        tui_console_cell(x + i, y, ch, attr);
+}
+
+void tui_console_text(int x, int y, const char *text, int n, int attr)
+{
+    int i;
+
+    for (i = 0; i < n; ++i)
+        tui_console_cell(x + i, y, (unsigned char)text[i], attr);
+}
+#endif
+
 void tui_putc(TuiDraw *d, int x, int y, int ch, int attr)
 {
     int sx;
@@ -84,26 +106,34 @@ void tui_text(TuiDraw *d, int x, int y,
 {
     int sx;
     int sy;
+    int n;
 
     if (s == 0)
         return;
 
     /*
-     * Same cells as calling tui_putc for each character, but the row is
-     * clipped once. On the MiniCPU every call costs dozens of instructions
-     * and a full redraw is mostly text and fills.
+     * Same cells as calling tui_putc for each character, but the row is clipped
+     * once and the console gets the whole run. On the MiniCPU every call costs
+     * dozens of instructions and a full redraw is mostly text and fills.
      */
     sx = d->ox + x;
     sy = d->oy + y;
     if (sy < d->y1 || sy >= d->y2)
         return;
 
-    while (*s != 0 && sx < d->x2) {
-        if (sx >= d->x1)
-            tui_console_cell(sx, sy, (unsigned char)*s, attr);
+    /* The characters left of the clip are skipped, not drawn. */
+    while (*s != 0 && sx < d->x1) {
         ++sx;
         ++s;
     }
+
+    n = 0;
+
+    while (s[n] != 0 && sx + n < d->x2)
+        ++n;
+
+    if (n > 0)
+        tui_console_text(sx, sy, s, n, attr);
 }
 
 void tui_chars(TuiDraw *d, int x, int y,
@@ -111,17 +141,19 @@ void tui_chars(TuiDraw *d, int x, int y,
 {
     int sx;
     int sy;
-    int i;
+    int from;
+    int to;
 
     sx = d->ox + x;
     sy = d->oy + y;
     if (sy < d->y1 || sy >= d->y2)
         return;
 
-    for (i = 0; i < n && sx < d->x2; ++i, ++sx) {
-        if (sx >= d->x1)
-            tui_console_cell(sx, sy, (unsigned char)s[i], attr);
-    }
+    from = tui_max(sx, d->x1);
+    to = tui_min(sx + n, d->x2);
+
+    if (to > from)
+        tui_console_text(from, sy, s + (from - sx), to - from, attr);
 }
 
 void tui_text_padded(TuiDraw *d, int x, int y, int w,
@@ -129,33 +161,42 @@ void tui_text_padded(TuiDraw *d, int x, int y, int w,
 {
     int sx;
     int sy;
+    int start;
     int end;
-    int ch;
+    int n;
 
     sx = d->ox + x;
     sy = d->oy + y;
     if (sy < d->y1 || sy >= d->y2)
         return;
 
+    start = tui_max(sx, d->x1);
     end = tui_min(sx + w, d->x2);
 
-    for (; sx < end; ++sx) {
-        ch = ' ';
+    if (start >= end)
+        return;
 
-        if (s != 0 && *s != '\0') {
-            ch = (unsigned char)*s;
+    n = 0;
+
+    if (s != 0) {
+        /* The characters left of the clip are skipped, not drawn. */
+        for (; sx < start && *s != 0; ++sx)
             ++s;
-        }
 
-        if (sx >= d->x1)
-            tui_console_cell(sx, sy, ch, attr);
+        while (s[n] != 0 && start + n < end)
+            ++n;
     }
+
+    if (n > 0)
+        tui_console_text(start, sy, s, n, attr);
+
+    if (start + n < end)
+        tui_console_fill(start + n, sy, end - start - n, ' ', attr);
 }
 
 void tui_fill(TuiDraw *d, int x, int y,
                      int w, int h, int ch, int attr)
 {
-    int xx;
     int yy;
     int x1;
     int y1;
@@ -168,11 +209,11 @@ void tui_fill(TuiDraw *d, int x, int y,
     x2 = tui_min(d->ox + x + w, d->x2);
     y2 = tui_min(d->oy + y + h, d->y2);
 
-    for (yy = y1; yy < y2; ++yy) {
-        for (xx = x1; xx < x2; ++xx) {
-            tui_console_cell(xx, yy, ch, attr);
-        }
-    }
+    if (x2 <= x1)
+        return;
+
+    for (yy = y1; yy < y2; ++yy)
+        tui_console_fill(x1, yy, x2 - x1, ch, attr);
 }
 
 void tui_box(TuiDraw *d, int w, int h, int attr)

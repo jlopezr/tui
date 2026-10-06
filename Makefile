@@ -119,11 +119,42 @@ mini-profile: $(MINI_PROFILE_BIN)
 	cpusim $(MINI_PROFILE_BIN) --serial-input _build/empty.bin --input-script $(MINI_PROFILE_SCRIPT) --console-output _build/profile.txt --frame-instructions 75000 --run-limit $(MINI_SIM_MAX)
 	head -n 2 _build/profile.txt
 
+# Los tramos de celdas de la consola de la MiniCPU (console.h): comprobacion y medida.
+#
+#   make mini-runcheck      tui_console_fill y tui_console_text contra tui_console_cell
+#                           en el simulador; debe escribir "DIFF 0000"
+#   make mini-bench MINI_BENCH_MODE=4
+#                           instrucciones de escribir celdas (modos en test/mini_bench.c)
+MINI_BENCH_MODE ?= 8
+
+_build/mini_runcheck.bin: test/mini_runcheck.c console_mini.c console.h
+	mkdir -p _build
+	mini-lcc test/mini_runcheck.c -o _build/mini_runcheck.s
+	mini-asm _build/mini_runcheck.s -o _build/mini_runcheck.bin
+
+mini-runcheck: _build/mini_runcheck.bin
+	: > _build/empty.bin
+	printf '# none\n' > _build/noscript.txt
+	cpusim _build/mini_runcheck.bin --serial-input _build/empty.bin --input-script _build/noscript.txt --console-output _build/runcheck.txt --frame-instructions 75000 --run-limit $(MINI_SIM_MAX)
+	head -n 1 _build/runcheck.txt
+
+mini-bench: test/mini_bench.c console_mini.c console.h
+	mkdir -p _build
+	printf '#define BENCH_MODE $(MINI_BENCH_MODE)\n#include "../test/mini_bench.c"\n' > _build/mini_bench_main.c
+	mini-lcc _build/mini_bench_main.c -o _build/mini_bench.s
+	mini-asm _build/mini_bench.s -o _build/mini_bench.bin
+	: > _build/empty.bin
+	printf '# none\n' > _build/noscript.txt
+	cpusim _build/mini_bench.bin --serial-input _build/empty.bin --input-script _build/noscript.txt --console-output _build/bench.txt --frame-instructions 75000 --run-limit $(MINI_SIM_MAX) | grep HALT
+
 clean:
 	rm -f $(TARGET) $(UNITY_TARGET) $(WIN32_TARGET) $(TEST_TARGET) $(COVERAGE_TARGET) \
 		$(COVERAGE_DIR)/test_controls.profraw \
 		$(COVERAGE_DIR)/test_controls.profdata \
 		_build/tui_mini.s $(MINI_BIN) _build/keys.bin _build/screen.txt \
-		_build/tui_profile.s $(MINI_PROFILE_BIN) _build/empty.bin _build/profile.txt
+		_build/tui_profile.s $(MINI_PROFILE_BIN) _build/empty.bin _build/profile.txt \
+		_build/mini_runcheck.s _build/mini_runcheck.bin _build/runcheck.txt \
+		_build/mini_bench_main.c _build/mini_bench.s _build/mini_bench.bin \
+		_build/bench.txt _build/noscript.txt
 
-.PHONY: all clean test coverage unity win32 mini mini-sim mini-run mini-profile
+.PHONY: all clean test coverage unity win32 mini mini-sim mini-run mini-profile mini-runcheck mini-bench
