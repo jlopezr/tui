@@ -980,6 +980,25 @@ void tui_draw_region(TuiDesktop *desktop, int x1, int y1, int x2, int y2)
 
 void tui_draw_end(TuiDesktop *desktop)
 {
+    TuiControl *top;
+
+    /*
+     * The cursor survives partial draws, so it can be left over from a draw that
+     * came before something that now covers it (a menu popup opened over it). It
+     * only counts if the control on top of its cell is the one that has the focus
+     * (or part of it). When the cover goes away that cell is invalidated, the
+     * focused control is drawn again and asks for the cursor again.
+     */
+    if (desktop->cursor_visible && desktop->focused != 0) {
+        top = tui_hit_test(&desktop->control,
+                           desktop->cursor_x,
+                           desktop->cursor_y);
+
+        if (top != desktop->focused &&
+            (top == 0 || !tui_is_ancestor(desktop->focused, top)))
+            desktop->cursor_visible = 0;
+    }
+
     tui_console_cursor(desktop->cursor_x,
                        desktop->cursor_y,
                        desktop->cursor_visible);
@@ -1058,24 +1077,6 @@ int tui_command_run(TuiDesktop *desktop, int command)
  * ------------------------------------------------------------
  */
 
-static void tui_dirty_add(TuiDesktop *desktop,
-                          int x1, int y1, int x2, int y2)
-{
-    int i;
-    int *r;
-    int best;
-    int best_area;
-    int area;
-    int ux1;
-    int uy1;
-    int ux2;
-    int uy2;
-
-    ++desktop->dirty_serial;
-
-    if (desktop->dirty_all)
-        return;
-
 static int tui_rect_covers(const int *r, int x1, int y1, int x2, int y2)
 {
     return r[0] <= x1 && r[1] <= y1 && r[2] >= x2 && r[3] >= y2;
@@ -1108,6 +1109,24 @@ static void tui_rects_drop_covered(int *rects, int *count,
     }
     *count = kept;
 }
+
+static void tui_dirty_add(TuiDesktop *desktop,
+                          int x1, int y1, int x2, int y2)
+{
+    int i;
+    int *r;
+    int best;
+    int best_area;
+    int area;
+    int ux1;
+    int uy1;
+    int ux2;
+    int uy2;
+
+    ++desktop->dirty_serial;
+
+    if (desktop->dirty_all)
+        return;
 
     x1 = tui_max(x1, 0);
     y1 = tui_max(y1, 0);
@@ -1775,16 +1794,10 @@ static int tui_lookahead_valid;
  * mouse). Nothing else is merged: keys, presses and releases all get through, in
  * order. Whatever follows the last move is kept for the next call.
  */
-int tui_read_event(TuiEvent *event)
+/* Folds the mouse moves that follow a mouse move into it. */
+static void tui_coalesce_moves(TuiEvent *event)
 {
     int key;
-
-    if (tui_lookahead_valid) {
-        *event = tui_lookahead;
-        tui_lookahead_valid = 0;
-    } else {
-        tui_make_event(event, tui_console_key());
-    }
 
     while (event->type == TUI_EV_MOUSE &&
            event->mouse_action == TUI_MOUSE_MOVE) {
@@ -1803,7 +1816,36 @@ int tui_read_event(TuiEvent *event)
             break;
         }
     }
+}
 
+int tui_read_event(TuiEvent *event)
+{
+    if (tui_lookahead_valid) {
+        *event = tui_lookahead;
+        tui_lookahead_valid = 0;
+    } else {
+        tui_make_event(event, tui_console_key());
+    }
+
+    tui_coalesce_moves(event);
+    return 1;
+}
+
+int tui_poll_event(TuiEvent *event)
+{
+    int key;
+
+    if (tui_lookahead_valid) {
+        *event = tui_lookahead;
+        tui_lookahead_valid = 0;
+    } else {
+        key = tui_console_poll();
+        if (key == TUI_KEY_NONE)
+            return 0;
+        tui_make_event(event, key);
+    }
+
+    tui_coalesce_moves(event);
     return 1;
 }
 

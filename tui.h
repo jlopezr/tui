@@ -573,6 +573,12 @@ int tui_dispatch(TuiDesktop *desktop,
  */
 int tui_read_event(TuiEvent *event);
 
+/*
+ * The same without waiting: returns 1 and fills event, or 0 if there is nothing
+ * right now. For an application that has other work to do between events.
+ */
+int tui_poll_event(TuiEvent *event);
+
 
 /*
  * Window

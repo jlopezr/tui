@@ -316,8 +316,46 @@ static void test_detached_and_empty(void)
     CHECK(test_key(&desktop, TUI_KEY_ESCAPE));
 }
 
+/* The text cursor of the focused editor must not show through a popup over it. */
+static void test_popup_covers_cursor(void)
+{
+    TuiDesktop desktop;
+    TuiMenuBar menubar;
+    TuiEditor editor;
+    char buffer[32];
+
+    test_init_desktop(&desktop);
+    tui_menubar_init(&menubar, cov_menus, 2);
+    tui_add(&desktop.control, &menubar.control);
+
+    tui_editor_init_buffer(&editor, 0, 1, 40, 10, buffer, (int)sizeof(buffer));
+    tui_editor_set_text(&editor, "\nabc");
+    editor.cursor_pos = 4;                 /* line 1, column 3: screen cell (3, 2) */
+    tui_editor_reset(&editor);
+    tui_add(&desktop.control, &editor.control);
+    tui_desktop_set_focus(&desktop, &editor.control);
+
+    tui_draw(&desktop);
+    CHECK(test_cursor_visible);
+    CHECK(test_cursor_x == 3 && test_cursor_y == 2);
+
+    /* The popup opens over that cell: the cursor goes. */
+    CHECK(test_mouse_down(&desktop, 2, 0));
+    CHECK(menubar.active);
+    tui_draw_pending(&desktop);
+    CHECK(!test_cursor_visible);
+
+    /* It closes: the editor is drawn again and the cursor comes back. */
+    CHECK(cov_mouse(&desktop, 50, 10, TUI_MOUSE_DOWN, TUI_MOUSE_LEFT));
+    CHECK(!menubar.active);
+    tui_draw_pending(&desktop);
+    CHECK(test_cursor_visible);
+    CHECK(test_cursor_x == 3 && test_cursor_y == 2);
+}
+
 void test_menu_suite(void)
 {
+    test_run_case("popup over the text cursor", test_popup_covers_cursor);
     test_run_case("menubar mouse activation", test_mouse_activation);
     test_run_case("menubar keyboard navigation", test_keyboard_navigation);
     test_run_case("popup mouse handling", test_popup_mouse);
