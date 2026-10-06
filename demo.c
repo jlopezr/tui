@@ -65,11 +65,11 @@ typedef struct App {
     TuiListBox scroll_list;
     TuiListBox short_list;
     char note_buffer[256];
-    TuiTextArea note_area;
+    TuiEditor note_area;
     char code_buffer[1024];
-    TuiTextArea code_area;
+    TuiEditor code_area;
     char help_buffer[256];
-    TuiTextArea help_area;
+    TuiEditor help_area;
     TuiScrollBar vscroll;
     TuiScrollBar hscroll;
     TuiLabel vscroll_label;
@@ -260,19 +260,19 @@ static void demo_build_controls(App *app)
     tui_combobox_set_scrollbar(&app->scroll_combo, 1);
 
     app->note_buffer[0] = '\0';
-    tui_textarea_init(&app->note_area, 0, 0, 23, 3,
-                      app->note_buffer,
-                      (int)sizeof(app->note_buffer));
-    tui_textarea_set_text(&app->note_area,
-                          "Hello world\n"
-                          "This is a multiline\n"
-                          "editable text area.");
+    tui_editor_init_buffer(&app->note_area, 0, 0, 23, 3,
+                           app->note_buffer,
+                           (int)sizeof(app->note_buffer));
+    tui_editor_set_text(&app->note_area,
+                        "Hello world\n"
+                        "This is a multiline\n"
+                        "editable text area.");
 
     app->code_buffer[0] = '\0';
-    tui_textarea_init(&app->code_area, 0, 0, 23, 3,
-                      app->code_buffer,
-                      (int)sizeof(app->code_buffer));
-    tui_textarea_set_text(&app->code_area,
+    tui_editor_init_buffer(&app->code_area, 0, 0, 23, 3,
+                           app->code_buffer,
+                           (int)sizeof(app->code_buffer));
+    tui_editor_set_text(&app->code_area,
         "10 PRINT \"A long line that needs horizontal scrolling\"\n"
         "20 FOR I = 1 TO 10\n"
         "30   PRINT I\n"
@@ -283,14 +283,14 @@ static void demo_build_controls(App *app)
         "80 END");
 
     app->help_buffer[0] = '\0';
-    tui_textarea_init(&app->help_area, 0, 17, 13, 4,
-                      app->help_buffer,
-                      (int)sizeof(app->help_buffer));
-    tui_textarea_set_text(&app->help_area,
-                          "Read-only text.\nArrows and the\n"
-                          "mouse scroll it.\nNothing can be\n"
-                          "edited here.");
-    tui_textarea_set_readonly(&app->help_area, 1);
+    tui_editor_init_buffer(&app->help_area, 0, 17, 13, 4,
+                           app->help_buffer,
+                           (int)sizeof(app->help_buffer));
+    tui_editor_set_text(&app->help_area,
+                        "Read-only text.\nArrows and the\n"
+                        "mouse scroll it.\nNothing can be\n"
+                        "edited here.");
+    tui_editor_set_readonly(&app->help_area, 1);
 
     tui_listbox_init(&app->listbox, 1, 1, 21, 5,
                      demo_items, 10);

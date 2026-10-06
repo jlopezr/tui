@@ -510,6 +510,58 @@ void tui_editor_init(TuiEditor *editor,
         editor_sync(editor, 0);
 }
 
+void tui_editor_init_buffer(TuiEditor *editor,
+                            int x,
+                            int y,
+                            int width,
+                            int height,
+                            char *buffer,
+                            int capacity)
+{
+    tui_linear_text_model_adopt(&editor->own, buffer, capacity);
+    tui_editor_init(editor, x, y, width, height, &editor->own.model);
+}
+
+/* True when the editor works on the model that tui_editor_init_buffer made. */
+static int editor_has_own_model(const TuiEditor *editor)
+{
+    return editor != 0 && editor->model == &editor->own.model;
+}
+
+void tui_editor_reset(TuiEditor *editor)
+{
+    if (editor == 0 || editor->model == 0)
+        return;
+
+    tui_invalidate(&editor->control);
+
+    /* The sync keeps the cursor inside the text and the viewport on the cursor. */
+    editor_sync(editor, 1);
+}
+
+void tui_editor_set_text(TuiEditor *editor, const char *text)
+{
+    if (!editor_has_own_model(editor))
+        return;
+
+    tui_linear_text_model_set_text(&editor->own, text);
+
+    editor->cursor_pos = 0;
+    editor->top_line = 0;
+    editor->left_col = 0;
+    editor->modified = 0;
+
+    tui_editor_reset(editor);
+}
+
+const char *tui_editor_get_text(const TuiEditor *editor)
+{
+    if (!editor_has_own_model(editor) || editor->own.buffer == 0)
+        return "";
+
+    return editor->own.buffer;
+}
+
 void tui_editor_set_command(TuiEditor *editor, int command)
 {
     if (editor != 0)

@@ -104,6 +104,33 @@ static void test_tm_insert(void)
     CHECK(model_is(&m, ""));
 }
 
+/* adopt keeps the C string already in the buffer, cut inside the capacity. */
+static void test_tm_adopt(void)
+{
+    char buf[16];
+    TuiLinearTextModel m;
+
+    strcpy(buf, "Hello\nWorld");
+    tui_linear_text_model_adopt(&m, buf, 16);
+    CHECK(tui_text_model_length(&m.model) == 11);
+    CHECK(model_is(&m, "Hello\nWorld"));
+    CHECK(tui_text_model_insert(&m.model, 5, "!", 1) == 1);
+    CHECK(model_is(&m, "Hello!\nWorld"));
+
+    /* No terminator inside the capacity: cut there. */
+    memset(buf, 'x', sizeof(buf));
+    tui_linear_text_model_adopt(&m, buf, 4);
+    CHECK(buf[3] == '\0');
+    CHECK(tui_text_model_length(&m.model) == 3);
+
+    /* A capacity of one holds nothing; no buffer, nothing at all. */
+    tui_linear_text_model_adopt(&m, buf, 1);
+    CHECK(tui_text_model_length(&m.model) == 0 && buf[0] == '\0');
+    tui_linear_text_model_adopt(&m, 0, 16);
+    CHECK(tui_text_model_length(&m.model) == 0);
+    CHECK(tui_text_model_insert(&m.model, 0, "a", 1) == 0);
+}
+
 static void test_tm_delete(void)
 {
     char buf[16];
@@ -142,4 +169,5 @@ void test_textmodel_suite(void)
     test_run_case("textmodel basic", test_tm_basic);
     test_run_case("textmodel insert", test_tm_insert);
     test_run_case("textmodel delete", test_tm_delete);
+    test_run_case("textmodel adopt", test_tm_adopt);
 }

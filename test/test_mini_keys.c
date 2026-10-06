@@ -1234,15 +1234,15 @@ static void test_pending_listbox_focus_draws_one_row(void)
 }
 
 /*
- * The focus moving between two windows with a TextArea each (the demo's "TextArea"
+ * The focus moving between two windows with an Editor over a buffer each (the demo's "TextArea"
  * and "Scrolling"): the two frames, which show which window is active, and the
  * cursor cell of each text area. Not the text areas themselves.
  */
-static void test_pending_textarea_focus_draws_only_the_cursor(void)
+static void test_pending_editor_buffer_focus_draws_only_the_cursor(void)
 {
     static TuiDesktop desktop;
     static TuiWindow w1, w2;
-    static TuiTextArea a1, a2;
+    static TuiEditor a1, a2;
     static char b1[64], b2[64];
     int written;
     int i;
@@ -1252,8 +1252,8 @@ static void test_pending_textarea_focus_draws_only_the_cursor(void)
     tui_window_init(&w2, 26, 16, 25, 5, "Scrolling");
     strcpy(b1, "Some text\nsecond line\nthird\nfourth");
     strcpy(b2, "Other text\nline two\nline three\nfour");
-    tui_textarea_init(&a1, 0, 0, 23, 3, b1, 64);
-    tui_textarea_init(&a2, 0, 0, 23, 3, b2, 64);
+    tui_editor_init_buffer(&a1, 0, 0, 23, 3, b1, 64);
+    tui_editor_init_buffer(&a2, 0, 0, 23, 3, b2, 64);
     tui_add(&w1.control, &a1.control);
     tui_add(&w2.control, &a2.control);
     tui_add(&desktop.control, &w1.control);
@@ -1279,7 +1279,7 @@ static void test_pending_textarea_focus_draws_only_the_cursor(void)
     CHECK(written >= 100 && written <= 2 * (56 + 12) + 20);
 
     /* A read-only one has no cursor: nothing of it is drawn. */
-    tui_textarea_set_readonly(&a2, 1);
+    tui_editor_set_readonly(&a2, 1);
     paint_and_check(&desktop);
     tui_desktop_set_focus(&desktop, &a2.control);
     paint_and_check(&desktop);
@@ -2030,8 +2030,8 @@ void test_mini_keys_suite(void)
                   test_pending_listbox_focus_draws_one_row);
     test_run_case("pending redraw: plain windows skip their frames on focus",
                   test_pending_focus_across_plain_windows_skips_frames);
-    test_run_case("pending redraw: text area focus draws only the cursor",
-                  test_pending_textarea_focus_draws_only_the_cursor);
+    test_run_case("pending redraw: editor buffer focus draws only the cursor",
+                  test_pending_editor_buffer_focus_draws_only_the_cursor);
     test_run_case("pending redraw: list moves draw two rows",
                   test_pending_listbox_moves_draw_two_rows);
     test_run_case("pending redraw: an edit draws what changed",

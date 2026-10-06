@@ -17,7 +17,6 @@ typedef struct TuiLabel TuiLabel;
 typedef struct TuiPanel TuiPanel;
 typedef struct TuiButton TuiButton;
 typedef struct TuiEdit TuiEdit;
-typedef struct TuiTextArea TuiTextArea;
 typedef struct TuiTextModel TuiTextModel;
 typedef struct TuiLinearTextModel TuiLinearTextModel;
 typedef struct TuiEditor TuiEditor;
@@ -696,26 +695,6 @@ void tui_edit_set_text(TuiEdit *edit,
 const char *tui_edit_get_text(TuiEdit *edit);
 
 /*
- * Text area: simple multiline editor over an application buffer.
- * Lines are separated by '\n'; scroll bars appear automatically.
- */
-void tui_textarea_init(TuiTextArea *area,
-                       int x,
-                       int y,
-                       int width,
-                       int height,
-                       char *buffer,
-                       int capacity);
-
-void tui_textarea_set_text(TuiTextArea *area,
-                           const char *text);
-
-const char *tui_textarea_get_text(const TuiTextArea *area);
-
-/* A read-only text area can be navigated and scrolled, not edited. */
-void tui_textarea_set_readonly(TuiTextArea *area, int readonly);
-
-/*
  * Text model: character storage addressed by offsets. Lines are an
  * interpretation made by the user of the model ('\n' separators).
  *
@@ -777,19 +756,38 @@ struct TuiLinearTextModel {
     int length;
 };
 
+/* Starts with an empty text: the buffer is cleared. */
 void tui_linear_text_model_init(TuiLinearTextModel *model,
                                 char *buffer,
                                 int capacity);
+
+/*
+ * Like init, but the model starts with the C string that is already in the
+ * buffer, cut inside the capacity (the last byte is set to '\0').
+ */
+void tui_linear_text_model_adopt(TuiLinearTextModel *model,
+                                 char *buffer,
+                                 int capacity);
 
 /* Replaces the whole content, truncating to the capacity. */
 void tui_linear_text_model_set_text(TuiLinearTextModel *model,
                                     const char *text);
 
 /*
- * Editor: multiline editor over any TuiTextModel. It does not own
- * the storage. If a command is set, a TUI_EV_COMMAND (source = the
- * editor) is produced when a user action changes the cursor or the
- * text; the application then queries the editor state.
+ * Editor: multiline editor over a TuiTextModel; lines are separated by '\n'
+ * and scroll bars appear automatically. If a command is set, a TUI_EV_COMMAND
+ * (source = the editor) is produced when a user action changes the cursor or
+ * the text; the application then queries the editor state.
+ *
+ * There are two ways to make one:
+ *
+ *   tui_editor_init         over a model of yours. The editor does not own the
+ *                           storage; if the text is changed through the model,
+ *                           call tui_editor_reset.
+ *   tui_editor_init_buffer  over a buffer of yours, with a linear model that
+ *                           lives inside the editor. The text already in the
+ *                           buffer is kept (cut inside the capacity). Only
+ *                           this editor has tui_editor_set_text/get_text.
  */
 typedef struct TuiEditorPosition {
     int line;
@@ -803,6 +801,30 @@ void tui_editor_init(TuiEditor *editor,
                      int width,
                      int height,
                      TuiTextModel *model);
+
+void tui_editor_init_buffer(TuiEditor *editor,
+                            int x,
+                            int y,
+                            int width,
+                            int height,
+                            char *buffer,
+                            int capacity);
+
+/*
+ * Replaces the whole text, truncating to the capacity (NULL is the empty
+ * text): the cursor and the viewport go to the start, and the editor is not
+ * modified. Does nothing unless the editor was made with tui_editor_init_buffer.
+ */
+void tui_editor_set_text(TuiEditor *editor, const char *text);
+
+/* The text of an editor made with tui_editor_init_buffer, "" for any other. */
+const char *tui_editor_get_text(const TuiEditor *editor);
+
+/*
+ * The text was changed behind the editor's back (through its model): keeps the
+ * cursor inside the text, fits the viewport and scroll bars, and draws it all.
+ */
+void tui_editor_reset(TuiEditor *editor);
 
 void tui_editor_set_command(TuiEditor *editor, int command);
 
@@ -911,34 +933,16 @@ struct TuiEdit {
     int offset;
 };
 
-struct TuiTextArea {
-    TuiControl control;
-
-    char *text;
-    int capacity;
-
-    /* Offset of the cursor inside text; line/column are derived. */
-    int cursor_pos;
-    int top_line;
-    int left_col;
-    int readonly;
-
-    /* Size seen by the last sync, to detect resizes. */
-    int last_width;
-    int last_height;
-
-    /* Internal scroll bars, hidden children shown on demand. */
-    TuiScrollBar vscroll;
-    TuiScrollBar hscroll;
-};
-
 /*
- * List box
+ * Editor
  */
 struct TuiEditor {
     TuiControl control;
 
     TuiTextModel *model;
+
+    /* The model of tui_editor_init_buffer; model points to it. Not used otherwise. */
+    TuiLinearTextModel own;
 
     /* Offset of the cursor inside the model; line/column are derived. */
     int cursor_pos;

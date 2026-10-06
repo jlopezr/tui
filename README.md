@@ -5,18 +5,22 @@ Primera prueba del núcleo TUI discutido:
 - C89 para el core.
 - Sin `malloc`: los objetos los proporciona el caller.
 - `TuiControl` como base de `Window`, `Label` y `Button`.
-- `TuiTextArea`: editor multilínea sobre un buffer de la aplicación (`\n` como
-  separador, cursor como offset, sin word wrap), con scrollbars vertical y
-  horizontal automáticos, ratón y modo solo lectura (`tui_textarea_set_readonly`).
-  La demo incluye tres ejemplos.
 - `TuiTextModel`: interfaz mínima de texto por offsets (`length`, `read`,
   `insert`, `delete`), sin líneas ni cursor. `TuiLinearTextModel` la implementa
   sobre un `char[]` externo, sin malloc.
-- `TuiEditor`: editor sobre un `TuiTextModel` (no es propietario del texto).
-  Cursor como offset absoluto, scroll automático, ratón, `tui_editor_get_position`
-  (línea/columna/offset, base 0), `tui_editor_is_modified/set_modified` y un
-  comando (`tui_editor_set_command`) al cambiar cursor o texto por acción del
-  usuario. Demo: menú Demo > Editor.
+- `TuiEditor`: editor multilínea (`\n` como separador, cursor como offset
+  absoluto, sin word wrap), con scrollbars vertical y horizontal automáticos,
+  ratón y modo solo lectura (`tui_editor_set_readonly`). Tiene dos
+  constructores:
+  - `tui_editor_init`, sobre un `TuiTextModel` propio (el editor no es
+    propietario del texto; si se cambia por el modelo, `tui_editor_reset`).
+  - `tui_editor_init_buffer`, sobre un buffer de la aplicación, con un modelo
+    lineal dentro del editor (conserva el texto que ya haya en el buffer). Solo
+    este tiene `tui_editor_set_text` y `tui_editor_get_text`. Es lo que antes
+    era el `TuiTextArea`: la demo incluye tres ejemplos.
+  Además: `tui_editor_get_position` (línea/columna/offset, base 0),
+  `tui_editor_is_modified/set_modified` y un comando (`tui_editor_set_command`)
+  al cambiar cursor o texto por acción del usuario. Demo: menú Demo > Editor.
 - `TuiListBox` con selección por teclado/ratón, activación y type-to-select.
 - La demo muestra Label, Button, CheckBox, RadioButton, Edit, ComboBox y
   ListBox en ventanas separadas, más un ScrollBar vertical y otro horizontal
@@ -160,7 +164,8 @@ make test
 ```
 
 La suite organiza las pruebas por control (`test_listbox.c`, `test_edit.c`,
-`test_button.c`, `test_checkbox.c`, `test_radiobutton.c`, `test_combobox.c`, `test_scrollbar.c`, `test_textarea.c`, `test_textmodel.c`, `test_editor.c`,
+`test_button.c`, `test_checkbox.c`, `test_radiobutton.c`, `test_combobox.c`, `test_scrollbar.c`, `test_textmodel.c`, `test_editor.c`, `test_editor_buffer.c`
+(el editor sobre un buffer, `tui_editor_init_buffer`),
 `test_window.c`, `test_menu.c`, `test_statusbar.c` y `test_label.c`) y
 `test_core.c` cubre árbol, layout, hit-testing y foco. `test_support.c`
 comparte la consola simulada y los helpers; no requiere ncurses ni una
@@ -184,9 +189,9 @@ perfiles quedan en `coverage/`, que se puede limpiar con `make clean`.
 - `tui.c`: core TUI (árbol, layout, dibujo, foco y dispatch).
 - `tui_unity.c`: agregador opcional para un solo translation unit.
 - `tui_window.c`, `tui_button.c`, `tui_label.c`: controles básicos.
-- `tui_textarea.c`: editor multilínea.
 - `tui_textmodel.c`: interfaz `TuiTextModel` y modelo lineal `TuiLinearTextModel`.
-- `tui_editor.c`: `TuiEditor` sobre un `TuiTextModel`.
+- `tui_editor.c`: `TuiEditor`, el editor multilínea, sobre un `TuiTextModel` o
+  sobre un buffer.
 - `tui_edit.c`, `tui_listbox.c`: controles de edición y lista.
 - `tui_checkbox.c`, `tui_radiobutton.c`, `tui_combobox.c`: selección
   booleana, exclusiva por grupo y desplegable.
@@ -293,7 +298,7 @@ tui_draw_pending(&desktop);       /* en vez de tui_draw() */
   `TUI_DIRTY_MAX` rectángulos: un rectángulo nuevo absorbe los más pequeños que
   contiene, y si aun así no hay hueco se funde con el que menos crece, de modo que
   una ráfaga de cambios repinta algo de más pero nunca la pantalla entera.
-- **Cada control invalida lo suyo**: Edit, TextArea, Editor, ListBox, CheckBox,
+- **Cada control invalida lo suyo**: Edit, Editor, ListBox, CheckBox,
   RadioButton (y los hermanos que desmarca), ComboBox, ScrollBar, Label y
   StatusBar, tanto al gestionar un evento como en sus `set_*`. Añadir
   (`tui_add`), quitar (`tui_remove`) y subir al frente una ventana, mover una

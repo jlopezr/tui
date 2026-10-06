@@ -2,14 +2,14 @@
 
 #include "test_support.h"
 
-static void ta_setup(TuiDesktop *desktop, TuiTextArea *area,
+static void eb_setup(TuiDesktop *desktop, TuiEditor *area,
                      char *buffer, int capacity,
                      int width, int height, const char *text)
 {
     test_init_desktop(desktop);
     buffer[0] = '\0';
-    tui_textarea_init(area, 2, 2, width, height, buffer, capacity);
-    tui_textarea_set_text(area, text);
+    tui_editor_init_buffer(area, 2, 2, width, height, buffer, capacity);
+    tui_editor_set_text(area, text);
     tui_add(&desktop->control, &area->control);
     tui_desktop_set_focus(desktop, &area->control);
 }
@@ -19,21 +19,21 @@ static int vis(const TuiScrollBar *sb)
     return (sb->control.flags & TUI_VISIBLE) != 0;
 }
 
-static int same(const TuiTextArea *area, const char *expected)
+static int same(const TuiEditor *area, const char *expected)
 {
-    return strcmp(tui_textarea_get_text(area), expected) == 0;
+    return strcmp(tui_editor_get_text(area), expected) == 0;
 }
 
-static void test_ta_text(void)
+static void test_eb_text(void)
 {
     char buf[32];
     char small[1];
     char two[2];
     char pre[16];
     TuiDesktop desktop;
-    TuiTextArea area;
+    TuiEditor area;
 
-    ta_setup(&desktop, &area, buf, 32, 10, 4, "");
+    eb_setup(&desktop, &area, buf, 32, 10, 4, "");
     CHECK(same(&area, ""));
     CHECK(area.cursor_pos == 0);
     tui_draw(&desktop);
@@ -41,7 +41,7 @@ static void test_ta_text(void)
 
     strcpy(pre, "Hello\nWorld");
     test_init_desktop(&desktop);
-    tui_textarea_init(&area, 2, 2, 10, 4, pre, 16);
+    tui_editor_init_buffer(&area, 2, 2, 10, 4, pre, 16);
     tui_add(&desktop.control, &area.control);
     CHECK(same(&area, "Hello\nWorld"));
     tui_draw(&desktop);
@@ -51,51 +51,51 @@ static void test_ta_text(void)
 
     /* Unterminated initial buffer is cut inside capacity. */
     memset(pre, 'x', sizeof(pre));
-    tui_textarea_init(&area, 0, 0, 10, 4, pre, 4);
+    tui_editor_init_buffer(&area, 0, 0, 10, 4, pre, 4);
     CHECK(pre[3] == '\0' && strlen(pre) == 3);
 
     /* set_text copies and truncates. */
-    ta_setup(&desktop, &area, buf, 6, 10, 4, "abcdefghij");
+    eb_setup(&desktop, &area, buf, 6, 10, 4, "abcdefghij");
     CHECK(same(&area, "abcde"));
-    tui_textarea_set_text(&area, "xy");
+    tui_editor_set_text(&area, "xy");
     CHECK(same(&area, "xy"));
-    tui_textarea_set_text(&area, 0);
+    tui_editor_set_text(&area, 0);
     CHECK(same(&area, ""));
 
-    ta_setup(&desktop, &area, small, 1, 10, 4, "abc");
+    eb_setup(&desktop, &area, small, 1, 10, 4, "abc");
     CHECK(same(&area, ""));
     CHECK(test_key(&desktop, 'a'));
     CHECK(test_key(&desktop, TUI_KEY_ENTER));
     CHECK(same(&area, ""));
 
-    ta_setup(&desktop, &area, two, 2, 10, 4, "");
+    eb_setup(&desktop, &area, two, 2, 10, 4, "");
     CHECK(test_key(&desktop, 'a'));
     CHECK(test_key(&desktop, 'b'));
     CHECK(same(&area, "a") && two[1] == '\0');
-    tui_textarea_set_text(&area, "");
+    tui_editor_set_text(&area, "");
     CHECK(test_key(&desktop, TUI_KEY_ENTER));
     CHECK(same(&area, "\n"));
 
     /* Degenerate arguments are safe. */
-    tui_textarea_init(&area, 0, 0, 5, 3, 0, 0);
-    tui_textarea_set_text(&area, "abc");
+    tui_editor_init_buffer(&area, 0, 0, 5, 3, 0, 0);
+    tui_editor_set_text(&area, "abc");
     CHECK(same(&area, ""));
-    tui_textarea_set_text(0, "abc");
-    tui_textarea_set_readonly(0, 1);
-    CHECK(strcmp(tui_textarea_get_text(0), "") == 0);
+    tui_editor_set_text(0, "abc");
+    tui_editor_set_readonly(0, 1);
+    CHECK(strcmp(tui_editor_get_text(0), "") == 0);
 }
 
-static void test_ta_editing(void)
+static void test_eb_editing(void)
 {
     char buf[16];
     TuiDesktop desktop;
-    TuiTextArea area;
+    TuiEditor area;
 
-    ta_setup(&desktop, &area, buf, 16, 10, 4, "bd");
+    eb_setup(&desktop, &area, buf, 16, 10, 4, "bd");
     CHECK(test_key(&desktop, 'a'));
     CHECK(same(&area, "abd"));
 
-    ta_setup(&desktop, &area, buf, 16, 10, 4, "bd");
+    eb_setup(&desktop, &area, buf, 16, 10, 4, "bd");
     test_key(&desktop, TUI_KEY_RIGHT);
     test_key(&desktop, 'c');
     CHECK(same(&area, "bcd"));
@@ -120,7 +120,7 @@ static void test_ta_editing(void)
     CHECK(same(&area, "cde"));
 
     /* Delete over a newline joins; delete at EOF does nothing. */
-    tui_textarea_set_text(&area, "ab\ncd");
+    tui_editor_set_text(&area, "ab\ncd");
     test_key(&desktop, TUI_KEY_RIGHT);
     test_key(&desktop, TUI_KEY_RIGHT);
     test_key(&desktop, TUI_KEY_DELETE);
@@ -134,14 +134,14 @@ static void test_ta_editing(void)
     CHECK(same(&area, "abcd"));
 
     /* Full buffer. */
-    ta_setup(&desktop, &area, buf, 4, 10, 4, "abc");
+    eb_setup(&desktop, &area, buf, 4, 10, 4, "abc");
     test_key(&desktop, TUI_KEY_END);
     test_key(&desktop, 'x');
     test_key(&desktop, TUI_KEY_ENTER);
     CHECK(same(&area, "abc") && buf[3] == '\0');
 
     /* Many Enter/Delete round trips. */
-    ta_setup(&desktop, &area, buf, 16, 10, 4, "ab");
+    eb_setup(&desktop, &area, buf, 16, 10, 4, "ab");
     test_key(&desktop, TUI_KEY_ENTER);
     test_key(&desktop, TUI_KEY_ENTER);
     test_key(&desktop, TUI_KEY_ENTER);
@@ -153,13 +153,13 @@ static void test_ta_editing(void)
     CHECK(area.cursor_pos == 1);
 }
 
-static void test_ta_cursor(void)
+static void test_eb_cursor(void)
 {
     char buf[64];
     TuiDesktop desktop;
-    TuiTextArea area;
+    TuiEditor area;
 
-    ta_setup(&desktop, &area, buf, 64, 10, 5, "abcdef\nxy\n\nlast\n");
+    eb_setup(&desktop, &area, buf, 64, 10, 5, "abcdef\nxy\n\nlast\n");
     test_key(&desktop, TUI_KEY_END);
     CHECK(area.cursor_pos == 6);
     test_key(&desktop, TUI_KEY_RIGHT);
@@ -181,7 +181,7 @@ static void test_ta_cursor(void)
     CHECK(area.cursor_pos == 0);
 
     /* Last empty line from the trailing newline. */
-    tui_textarea_set_text(&area, "abc\n");
+    tui_editor_set_text(&area, "abc\n");
     test_key(&desktop, TUI_KEY_DOWN);
     CHECK(area.cursor_pos == 4);
     test_key(&desktop, TUI_KEY_DOWN);
@@ -197,7 +197,7 @@ static void test_ta_cursor(void)
     test_key(&desktop, TUI_KEY_LEFT);
     CHECK(area.cursor_pos == 0);
 
-    tui_textarea_set_text(&area, "\n\nabc\n\n");
+    tui_editor_set_text(&area, "\n\nabc\n\n");
     test_key(&desktop, TUI_KEY_DOWN);
     test_key(&desktop, TUI_KEY_DOWN);
     CHECK(area.cursor_pos == 2);
@@ -206,14 +206,14 @@ static void test_ta_cursor(void)
     CHECK(area.cursor_pos == 7);
 }
 
-static void test_ta_viewport(void)
+static void test_eb_viewport(void)
 {
     char buf[256];
     TuiDesktop desktop;
-    TuiTextArea area;
+    TuiEditor area;
     int i;
 
-    ta_setup(&desktop, &area, buf, 256, 10, 3,
+    eb_setup(&desktop, &area, buf, 256, 10, 3,
              "1\n2\n3\n4\n5\n6\n7\n8\n9");
     CHECK(area.top_line == 0 && area.left_col == 0);
     CHECK(vis(&area.vscroll) && !vis(&area.hscroll));
@@ -238,7 +238,7 @@ static void test_ta_viewport(void)
     CHECK(area.top_line == 0);
 
     /* Horizontal. */
-    ta_setup(&desktop, &area, buf, 256, 8, 4,
+    eb_setup(&desktop, &area, buf, 256, 8, 4,
              "0123456789ABCDEF");
     CHECK(vis(&area.hscroll) && !vis(&area.vscroll));
     test_key(&desktop, TUI_KEY_END);
@@ -248,7 +248,7 @@ static void test_ta_viewport(void)
     CHECK(area.left_col == 0);
 
     /* Resize normalizes the viewport. */
-    ta_setup(&desktop, &area, buf, 256, 10, 3,
+    eb_setup(&desktop, &area, buf, 256, 10, 3,
              "1\n2\n3\n4\n5\n6\n7\n8\n9");
     test_key(&desktop, TUI_KEY_PAGEDOWN);
     test_key(&desktop, TUI_KEY_PAGEDOWN);
@@ -262,27 +262,27 @@ static void test_ta_viewport(void)
     CHECK(vis(&area.vscroll));
 }
 
-static void test_ta_scrollbars(void)
+static void test_eb_scrollbars(void)
 {
     char buf[256];
     TuiDesktop desktop;
-    TuiTextArea area;
+    TuiEditor area;
     TuiEvent event;
 
-    ta_setup(&desktop, &area, buf, 256, 10, 4, "ab\ncd");
+    eb_setup(&desktop, &area, buf, 256, 10, 4, "ab\ncd");
     CHECK(!vis(&area.vscroll) && !vis(&area.hscroll));
     CHECK(!(area.vscroll.control.flags & TUI_TABSTOP));
     CHECK(!(area.hscroll.control.flags & TUI_TABSTOP));
     CHECK(area.vscroll.command == TUI_CMD_NONE);
 
     /* Vertical only. */
-    ta_setup(&desktop, &area, buf, 256, 10, 3, "1\n2\n3\n4");
+    eb_setup(&desktop, &area, buf, 256, 10, 3, "1\n2\n3\n4");
     CHECK(vis(&area.vscroll) && !vis(&area.hscroll));
     CHECK(area.vscroll.control.x == 9 && area.vscroll.control.height == 3);
     CHECK(area.vscroll.max == 4 && area.vscroll.page == 3);
 
     /* Vertical appears and makes a 10 char line not fit. */
-    ta_setup(&desktop, &area, buf, 256, 10, 3, "0123456789\n2\n3\n4");
+    eb_setup(&desktop, &area, buf, 256, 10, 3, "0123456789\n2\n3\n4");
     CHECK(vis(&area.vscroll) && vis(&area.hscroll));
     CHECK(area.hscroll.max == 10 && area.hscroll.page == 9);
     CHECK(area.vscroll.control.height == 2);
@@ -294,12 +294,12 @@ static void test_ta_scrollbars(void)
     CHECK(test_cell_chars[4][10] == TUI_CH_RIGHT_TRIANGLE);
 
     /* Horizontal appears and makes the vertical needed. */
-    ta_setup(&desktop, &area, buf, 256, 10, 3, "0123456789ABC\n2\n3");
+    eb_setup(&desktop, &area, buf, 256, 10, 3, "0123456789ABC\n2\n3");
     CHECK(vis(&area.vscroll) && vis(&area.hscroll));
     CHECK(area.vscroll.page == 2);
 
     /* Scroll bar drives the viewport without commands. */
-    ta_setup(&desktop, &area, buf, 256, 10, 4,
+    eb_setup(&desktop, &area, buf, 256, 10, 4,
              "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12");
     tui_draw(&desktop);
     CHECK(test_mouse_action(&desktop, 11, 5, TUI_MOUSE_DOWN, &event));
@@ -322,7 +322,7 @@ static void test_ta_scrollbars(void)
     CHECK(tui_scrollbar_get_value(&area.vscroll) == area.top_line);
 
     /* Horizontal bar: arrow click and drag. */
-    ta_setup(&desktop, &area, buf, 256, 10, 4,
+    eb_setup(&desktop, &area, buf, 256, 10, 4,
              "0123456789ABCDEFGHIJ");
     tui_draw(&desktop);
     CHECK(test_mouse_action(&desktop, 11, 5, TUI_MOUSE_DOWN, &event));
@@ -346,19 +346,19 @@ static void test_ta_scrollbars(void)
     CHECK(vis(&area.hscroll));
 
     /* Scroll bars are not in the tab chain. */
-    ta_setup(&desktop, &area, buf, 256, 10, 3, "1\n2\n3\n4");
+    eb_setup(&desktop, &area, buf, 256, 10, 3, "1\n2\n3\n4");
     test_key(&desktop, TUI_KEY_TAB);
     CHECK(desktop.focused == &area.control);
 }
 
-static void test_ta_mouse(void)
+static void test_eb_mouse(void)
 {
     char buf[128];
     TuiDesktop desktop;
-    TuiTextArea area;
+    TuiEditor area;
     TuiEvent event;
 
-    ta_setup(&desktop, &area, buf, 128, 10, 4, "abcd\nef\n\nghij");
+    eb_setup(&desktop, &area, buf, 128, 10, 4, "abcd\nef\n\nghij");
 
     CHECK(test_mouse_action(&desktop, 3, 2, TUI_MOUSE_DOWN, &event));
     CHECK(area.cursor_pos == 1);
@@ -373,12 +373,12 @@ static void test_ta_mouse(void)
     CHECK(area.cursor_pos == 11);
 
     /* Below the document goes to its end. */
-    tui_textarea_set_text(&area, "ab\ncd");
+    tui_editor_set_text(&area, "ab\ncd");
     CHECK(test_mouse_action(&desktop, 2, 5, TUI_MOUSE_DOWN, &event));
     CHECK(area.cursor_pos == 5);
 
     /* Scrolled viewport. */
-    ta_setup(&desktop, &area, buf, 128, 10, 3, "a\nb\nc\nd\ne\nfgh");
+    eb_setup(&desktop, &area, buf, 128, 10, 3, "a\nb\nc\nd\ne\nfgh");
     test_key(&desktop, TUI_KEY_END);
     test_key(&desktop, TUI_KEY_PAGEDOWN);
     CHECK(area.top_line == 3);
@@ -388,7 +388,7 @@ static void test_ta_mouse(void)
     CHECK(area.top_line == 3);
 
     /* Clicks on the scroll bar strip and the corner keep the cursor. */
-    ta_setup(&desktop, &area, buf, 128, 10, 3,
+    eb_setup(&desktop, &area, buf, 128, 10, 3,
              "a\nb\nc\nd\n0123456789ABC");
     tui_draw(&desktop);
     CHECK(vis(&area.vscroll) && vis(&area.hscroll));
@@ -400,17 +400,17 @@ static void test_ta_mouse(void)
     CHECK(area.cursor_pos == 0);
 }
 
-static void test_ta_readonly(void)
+static void test_eb_readonly(void)
 {
     char buf[64];
     TuiDesktop desktop;
-    TuiTextArea area;
+    TuiEditor area;
     TuiEvent event;
     int i;
 
-    ta_setup(&desktop, &area, buf, 64, 10, 3,
+    eb_setup(&desktop, &area, buf, 64, 10, 3,
              "a\nb\nc\nd\ne\nf");
-    tui_textarea_set_readonly(&area, 1);
+    tui_editor_set_readonly(&area, 1);
 
     CHECK(test_key(&desktop, 'x'));
     CHECK(test_key(&desktop, TUI_KEY_ENTER));
@@ -435,25 +435,25 @@ static void test_ta_readonly(void)
     CHECK(test_mouse_action(&desktop, 2, 2, TUI_MOUSE_DOWN, &event));
     CHECK(same(&area, "a\nb\nc\nd\ne\nf"));
 
-    tui_textarea_set_readonly(&area, 0);
+    tui_editor_set_readonly(&area, 0);
     tui_draw(&desktop);
     CHECK(test_cursor_visible);
     test_key(&desktop, 'x');
     CHECK(strlen(buf) == 12);
 }
 
-static void test_ta_degenerate_sizes(void)
+static void test_eb_degenerate_sizes(void)
 {
     char buf[64];
     TuiDesktop desktop;
-    TuiTextArea area;
+    TuiEditor area;
     TuiEvent event;
     int w;
     int h;
 
     for (w = 0; w <= 2; ++w) {
         for (h = 0; h <= 2; ++h) {
-            ta_setup(&desktop, &area, buf, 64, w, h,
+            eb_setup(&desktop, &area, buf, 64, w, h,
                      "abc\ndef\nghi\njkl");
             tui_draw(&desktop);
             test_key(&desktop, TUI_KEY_DOWN);
@@ -471,14 +471,88 @@ static void test_ta_degenerate_sizes(void)
     }
 }
 
-void test_textarea_suite(void)
+/* set_text opens a document: start of the text, not modified, all of it drawn. */
+static void test_eb_set_text_opens_a_document(void)
 {
-    test_run_case("textarea text", test_ta_text);
-    test_run_case("textarea editing", test_ta_editing);
-    test_run_case("textarea cursor", test_ta_cursor);
-    test_run_case("textarea viewport", test_ta_viewport);
-    test_run_case("textarea scrollbars", test_ta_scrollbars);
-    test_run_case("textarea mouse", test_ta_mouse);
-    test_run_case("textarea readonly", test_ta_readonly);
-    test_run_case("textarea degenerate sizes", test_ta_degenerate_sizes);
+    char buf[256];
+    TuiDesktop desktop;
+    TuiEditor area;
+    int i;
+
+    eb_setup(&desktop, &area, buf, 256, 10, 3,
+             "1\n2\n3\n4\n5\n6\n7\n8\n9");
+    tui_draw(&desktop);
+
+    for (i = 0; i < 5; ++i)
+        test_key(&desktop, TUI_KEY_DOWN);
+    test_key(&desktop, 'x');
+    CHECK(tui_editor_is_modified(&area));
+    CHECK(area.cursor_pos > 0 && area.top_line > 0);
+    tui_draw(&desktop);
+
+    tui_editor_set_text(&area, "new\ntext");
+    CHECK(same(&area, "new\ntext"));
+    CHECK(area.cursor_pos == 0 && area.top_line == 0 && area.left_col == 0);
+    CHECK(!tui_editor_is_modified(&area));
+    CHECK(!vis(&area.vscroll));
+    CHECK(desktop.dirty_all || desktop.dirty_count > 0);
+    tui_draw(&desktop);
+    CHECK(test_cell_chars[2][2] == 'n' && test_cell_chars[3][2] == 't');
+}
+
+/* A model of your own: the editor works on it, and has no text of its own to give. */
+static void test_eb_external_model(void)
+{
+    char buf[32];
+    TuiDesktop desktop;
+    TuiLinearTextModel model;
+    TuiEditor editor;
+    int i;
+
+    test_init_desktop(&desktop);
+    tui_linear_text_model_init(&model, buf, 32);
+    tui_linear_text_model_set_text(&model, "abc\ndef\nghi");
+    tui_editor_init(&editor, 2, 2, 10, 3, &model.model);
+    tui_add(&desktop.control, &editor.control);
+    tui_desktop_set_focus(&desktop, &editor.control);
+
+    /* Only an editor made with init_buffer has text to set or get. */
+    CHECK(strcmp(tui_editor_get_text(&editor), "") == 0);
+    tui_editor_set_text(&editor, "other");
+    CHECK(strcmp(buf, "abc\ndef\nghi") == 0);
+
+    for (i = 0; i < 9; ++i)
+        test_key(&desktop, TUI_KEY_RIGHT);
+    CHECK(editor.cursor_pos == 9);
+    tui_draw(&desktop);
+
+    /* The text shrinks behind its back: reset brings the cursor back inside it. */
+    tui_linear_text_model_set_text(&model, "ab");
+    tui_editor_reset(&editor);
+    CHECK(editor.cursor_pos == 2);
+    CHECK(desktop.dirty_all || desktop.dirty_count > 0);
+    tui_draw(&desktop);
+    CHECK(test_cell_chars[2][2] == 'a' && test_cell_chars[2][3] == 'b');
+    CHECK(test_cell_chars[3][2] == ' ');
+    CHECK(test_cursor_visible && test_cursor_x == 4 && test_cursor_y == 2);
+
+    /* Degenerate arguments are safe. */
+    tui_editor_reset(0);
+    CHECK(strcmp(tui_editor_get_text(0), "") == 0);
+}
+
+void test_editor_buffer_suite(void)
+{
+    test_run_case("editor buffer set_text opens a document",
+                  test_eb_set_text_opens_a_document);
+    test_run_case("editor buffer over an external model",
+                  test_eb_external_model);
+    test_run_case("editor buffer text", test_eb_text);
+    test_run_case("editor buffer editing", test_eb_editing);
+    test_run_case("editor buffer cursor", test_eb_cursor);
+    test_run_case("editor buffer viewport", test_eb_viewport);
+    test_run_case("editor buffer scrollbars", test_eb_scrollbars);
+    test_run_case("editor buffer mouse", test_eb_mouse);
+    test_run_case("editor buffer readonly", test_eb_readonly);
+    test_run_case("editor buffer degenerate sizes", test_eb_degenerate_sizes);
 }

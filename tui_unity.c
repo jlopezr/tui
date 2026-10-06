@@ -15,7 +15,6 @@
 #include "tui_radiobutton.c"
 #include "tui_combobox.c"
 #include "tui_scrollbar.c"
-#include "tui_textarea.c"
 #include "tui_textmodel.c"
 #include "tui_editor.c"
 

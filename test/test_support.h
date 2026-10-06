@@ -71,7 +71,7 @@ void test_checkbox_suite(void);
 void test_radiobutton_suite(void);
 void test_combobox_suite(void);
 void test_scrollbar_suite(void);
-void test_textarea_suite(void);
+void test_editor_buffer_suite(void);
 void test_textmodel_suite(void);
 void test_editor_suite(void);
 void test_mini_keys_suite(void);

@@ -133,6 +133,31 @@ void tui_linear_text_model_init(TuiLinearTextModel *model,
         model->buffer[0] = '\0';
 }
 
+void tui_linear_text_model_adopt(TuiLinearTextModel *model,
+                                 char *buffer,
+                                 int capacity)
+{
+    int len;
+
+    model->model.cls = &linear_class;
+    model->buffer = capacity > 0 ? buffer : 0;
+    model->capacity = model->buffer != 0 ? capacity : 0;
+    model->length = 0;
+
+    if (model->buffer == 0)
+        return;
+
+    /* A string that does not end inside the capacity is cut there. */
+    model->buffer[model->capacity - 1] = '\0';
+
+    len = 0;
+
+    while (model->buffer[len] != '\0')
+        ++len;
+
+    model->length = len;
+}
+
 void tui_linear_text_model_set_text(TuiLinearTextModel *model,
                                     const char *text)
 {

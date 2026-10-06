@@ -19,7 +19,7 @@ int main(void)
     test_radiobutton_suite();
     test_combobox_suite();
     test_scrollbar_suite();
-    test_textarea_suite();
+    test_editor_buffer_suite();
     test_textmodel_suite();
     test_editor_suite();
     test_mini_keys_suite();
