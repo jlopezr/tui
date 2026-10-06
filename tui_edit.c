@@ -61,35 +61,18 @@ static void edit_draw(TuiControl *control,
 {
     TuiEdit *edit;
     int attr;
-    int x;
-    int index;
+    int n;
 
     edit = (TuiEdit *)control;
     attr = tui_control_attr(control);
 
     /*
-     * Clear edit area.
+     * The visible part of the text, then the spaces up to the width: each cell is
+     * written once.
      */
-    tui_fill(draw,
-             0, 0,
-             control->width, 1,
-             ' ',
-             attr);
-
-    /*
-     * Draw visible part of text.
-     */
-    for (x = 0; x < control->width; ++x) {
-        index = edit->offset + x;
-
-        if (index >= edit->length)
-            break;
-
-        tui_putc(draw,
-                 x, 0,
-                 (unsigned char)edit->text[index],
-                 attr);
-    }
+    n = tui_max(0, tui_min(control->width, edit->length - edit->offset));
+    tui_chars(draw, 0, 0, edit->text + edit->offset, n, attr);
+    tui_fill(draw, n, 0, control->width - n, 1, ' ', attr);
 
     if (tui_control_has_focus(control)) {
         tui_draw_cursor(

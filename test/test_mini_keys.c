@@ -1461,6 +1461,62 @@ static void test_pending_edit_and_listbox_random_events(void)
     }
 }
 
+/*
+ * Repainting what is already on the screen changes no cell. The text of a row used
+ * to be drawn over a fill of spaces, so each letter's cell was changed twice (and
+ * the MiniCPU console writes both to the text RAM).
+ */
+static int changed_by_repaint(TuiDesktop *desktop, TuiControl *control)
+{
+    int before;
+    int changed;
+
+    paint_and_check(desktop);
+    before = test_cells_changed;
+    tui_invalidate(control);
+    tui_draw_pending(desktop);
+    changed = test_cells_changed - before;
+
+    /* Still the same screen as a full redraw. */
+    paint_and_check(desktop);
+
+    return changed;
+}
+
+static void test_pending_unchanged_repaint_changes_no_cell(void)
+{
+    static EditorScene s;
+    static FineScene f;
+    int written;
+    int before;
+
+    editor_scene_build(&s, 0, 0, 78, 23, 12, 40);
+    CHECK(changed_by_repaint(&s.desktop, &s.editor.control) == 0);
+
+    /* Scrolled, so the first line is not the first row; and with the cursor moved. */
+    test_key(&s.desktop, TUI_KEY_PAGEDOWN);
+    test_key(&s.desktop, TUI_KEY_RIGHT);
+    CHECK(changed_by_repaint(&s.desktop, &s.editor.control) == 0);
+
+    /* Each cell of the editor is written once: 78 x 23 and nothing more. */
+    paint_and_check(&s.desktop);
+    before = test_cells_written;
+    tui_invalidate(&s.editor.control);
+    tui_draw_pending(&s.desktop);
+    written = test_cells_written - before;
+    CHECK(written <= 78 * 23 + 2 * 23);
+
+    fine_scene_build(&f);
+    tui_desktop_set_focus(&f.desktop, &f.edit.control);
+    CHECK(changed_by_repaint(&f.desktop, &f.edit.control) == 0);
+    CHECK(changed_by_repaint(&f.desktop, &f.list.control) == 0);
+
+    /* The selected row, with and without the focus. */
+    tui_desktop_set_focus(&f.desktop, &f.list.control);
+    test_key(&f.desktop, TUI_KEY_DOWN);
+    CHECK(changed_by_repaint(&f.desktop, &f.list.control) == 0);
+}
+
 /* A small editor with both scroll bars and a long text, hit with random events. */
 static void test_pending_editor_random_events(void)
 {
@@ -2032,6 +2088,8 @@ void test_mini_keys_suite(void)
                   test_pending_focus_across_plain_windows_skips_frames);
     test_run_case("pending redraw: editor buffer focus draws only the cursor",
                   test_pending_editor_buffer_focus_draws_only_the_cursor);
+    test_run_case("pending redraw: repainting what is shown changes no cell",
+                  test_pending_unchanged_repaint_changes_no_cell);
     test_run_case("pending redraw: list moves draw two rows",
                   test_pending_listbox_moves_draw_two_rows);
     test_run_case("pending redraw: an edit draws what changed",

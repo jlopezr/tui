@@ -106,6 +106,52 @@ void tui_text(TuiDraw *d, int x, int y,
     }
 }
 
+void tui_chars(TuiDraw *d, int x, int y,
+               const char *s, int n, int attr)
+{
+    int sx;
+    int sy;
+    int i;
+
+    sx = d->ox + x;
+    sy = d->oy + y;
+    if (sy < d->y1 || sy >= d->y2)
+        return;
+
+    for (i = 0; i < n && sx < d->x2; ++i, ++sx) {
+        if (sx >= d->x1)
+            tui_console_cell(sx, sy, (unsigned char)s[i], attr);
+    }
+}
+
+void tui_text_padded(TuiDraw *d, int x, int y, int w,
+                     const char *s, int attr)
+{
+    int sx;
+    int sy;
+    int end;
+    int ch;
+
+    sx = d->ox + x;
+    sy = d->oy + y;
+    if (sy < d->y1 || sy >= d->y2)
+        return;
+
+    end = tui_min(sx + w, d->x2);
+
+    for (; sx < end; ++sx) {
+        ch = ' ';
+
+        if (s != 0 && *s != '\0') {
+            ch = (unsigned char)*s;
+            ++s;
+        }
+
+        if (sx >= d->x1)
+            tui_console_cell(sx, sy, ch, attr);
+    }
+}
+
 void tui_fill(TuiDraw *d, int x, int y,
                      int w, int h, int ch, int attr)
 {

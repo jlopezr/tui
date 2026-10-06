@@ -1,4 +1,7 @@
+#include <string.h>
+
 #include "test_support.h"
+#include "tui_internal.h"
 
 static void test_control_tree_management(void)
 {
@@ -273,6 +276,78 @@ static void test_read_event_passes_single_events(void)
     CHECK(read_mouse(1, 1, TUI_MOUSE_MOVE));
 }
 
+/* The characters on a row of the test screen, between two columns, as a string. */
+static const char *row_text(int y, int x1, int x2)
+{
+    static char text[64];
+    int x;
+
+    for (x = x1; x < x2; ++x)
+        text[x - x1] = (char)test_cell_chars[y][x];
+
+    text[x2 - x1] = '\0';
+
+    return text;
+}
+
+static void clear_test_rows(void)
+{
+    int x;
+    int y;
+
+    for (y = 0; y < 3; ++y)
+        for (x = 0; x < 30; ++x)
+            tui_console_cell(x, y, '.', 7);
+}
+
+/* tui_chars and tui_text_padded write inside the clip, and only there. */
+static void test_text_helpers_respect_the_clip(void)
+{
+    TuiDraw draw;
+
+    /* Origin (3, 1); the clip is columns 5..11 of row 1. */
+    draw.desktop = 0;
+    draw.ox = 3;
+    draw.oy = 1;
+    draw.x1 = 5;
+    draw.y1 = 1;
+    draw.x2 = 12;
+    draw.y2 = 2;
+
+    /* Cut on the left and on the right; the letters stay with their columns. */
+    clear_test_rows();
+    tui_text_padded(&draw, 0, 0, 12, "abcdefghijkl", 7);
+    CHECK(strcmp(row_text(1, 0, 14), ".....cdefghi..") == 0);
+
+    /* Short text: the spaces start where it ends, and stop with the width. */
+    clear_test_rows();
+    tui_text_padded(&draw, 0, 0, 7, "abcde", 7);
+    CHECK(strcmp(row_text(1, 5, 12), "cde  ..") == 0);
+
+    /* No text: only spaces, in the part inside the clip. */
+    clear_test_rows();
+    tui_text_padded(&draw, 0, 0, 6, 0, 7);
+    CHECK(strcmp(row_text(1, 4, 10), ".    .") == 0);
+
+    /* Text that ends left of the clip: only spaces inside it. */
+    clear_test_rows();
+    tui_text_padded(&draw, 0, 0, 12, "ab", 7);
+    CHECK(strcmp(row_text(1, 4, 13), ".       .") == 0);
+
+    /* A row outside the clip is not touched. */
+    clear_test_rows();
+    tui_text_padded(&draw, 0, 1, 6, "zzzzzz", 7);
+    tui_text_padded(&draw, 0, -1, 6, "zzzzzz", 7);
+    CHECK(strcmp(row_text(0, 0, 8), "........") == 0);
+    CHECK(strcmp(row_text(1, 0, 8), "........") == 0);
+    CHECK(strcmp(row_text(2, 0, 8), "........") == 0);
+
+    /* tui_chars: n characters, clipped the same way. */
+    clear_test_rows();
+    tui_chars(&draw, 0, 0, "abcdefghij", 6, 7);
+    CHECK(strcmp(row_text(1, 4, 11), ".cdef..") == 0);
+}
+
 void test_core_suite(void)
 {
     test_run_case("core control tree management",
@@ -285,6 +360,8 @@ void test_core_suite(void)
                   test_read_event_merges_mouse_moves);
     test_run_case("read event keeps everything else in order",
                   test_read_event_keeps_everything_else_in_order);
+    test_run_case("text helpers respect the clip",
+                  test_text_helpers_respect_the_clip);
     test_run_case("read event passes single events",
                   test_read_event_passes_single_events);
 }

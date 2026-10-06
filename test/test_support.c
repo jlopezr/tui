@@ -59,6 +59,7 @@ int tui_console_height(void)
 }
 
 int test_cells_written;
+int test_cells_changed;
 
 static int test_watch_active;
 static int test_watch_x1;
@@ -89,6 +90,9 @@ void tui_console_cell(int x, int y, int ch, int attr)
         return;
 
     ++test_cells_written;
+
+    if (test_cell_chars[y][x] != ch || test_cell_attrs[y][x] != attr)
+        ++test_cells_changed;
 
     /*
      * A write that changes the cell is something the screen shows, even if a later

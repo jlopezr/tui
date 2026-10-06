@@ -12,6 +12,22 @@ void tui_text(TuiDraw *draw, int x, int y,
               const char *text, int attr);
 void tui_fill(TuiDraw *draw, int x, int y,
               int width, int height, int ch, int attr);
+
+/*
+ * Draw the first n characters of text. Same cells as n calls to tui_putc, with
+ * the row clipped once.
+ */
+void tui_chars(TuiDraw *draw, int x, int y,
+               const char *text, int n, int attr);
+
+/*
+ * Draw text and fill the rest of width cells with spaces, so that each cell is
+ * written once. Filling a row first and writing the text over it changes every
+ * letter's cell twice (space, then letter) and the MiniCPU console writes both
+ * to the text RAM, even when the screen ends up as it was. text may be 0.
+ */
+void tui_text_padded(TuiDraw *draw, int x, int y, int width,
+                     const char *text, int attr);
 void tui_box(TuiDraw *draw, int width, int height, int attr);
 
 void tui_control_init(TuiControl *control,

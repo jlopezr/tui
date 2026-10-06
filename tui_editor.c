@@ -1018,7 +1018,6 @@ static void editor_draw(TuiControl *control, TuiDraw *draw)
     int end;
     int index;
     int n;
-    int i;
     int row_from;
     int row_to;
     int col_from;
@@ -1035,8 +1034,6 @@ static void editor_draw(TuiControl *control, TuiDraw *draw)
     editor_sync_view(editor, 0, &view);
     cw = view.cw;
     ch = view.ch;
-
-    tui_fill(draw, 0, 0, cw, ch, ' ', attr);
 
     if (view.show_v && view.show_h) {
         tui_fill(draw, cw, ch, 1, 1, ' ',
@@ -1063,30 +1060,44 @@ static void editor_draw(TuiControl *control, TuiDraw *draw)
     col_from = tui_max(0, draw->x1 - draw->ox);
     col_to = tui_min(cw, draw->x2 - draw->ox);
 
-    for (row = 0; row < ch && row < row_to && pos >= 0; ++row) {
-        end = editor_line_end(editor, pos);
+    /*
+     * Each row is written once, the text and then the spaces up to the edge. Filling
+     * the area first and drawing the text over it changes every letter's cell twice.
+     * Below the last line (pos < 0) the rows are only spaces.
+     */
+    end = 0;
+
+    for (row = 0; row < ch && row < row_to; ++row) {
+        if (pos >= 0)
+            end = editor_line_end(editor, pos);
 
         if (row >= row_from) {
             /* The visible part of the line, a chunk of the model at a time. */
             col = col_from;
-            index = pos + editor->left_col + col;
 
-            while (col < col_to && index < end) {
-                n = tui_min(tui_min(col_to - col, end - index), EDITOR_CHUNK);
-                n = tui_text_model_read(editor->model, index, buf, n);
+            if (pos >= 0) {
+                index = pos + editor->left_col + col;
 
-                if (n <= 0)
-                    break;
+                while (col < col_to && index < end) {
+                    n = tui_min(tui_min(col_to - col, end - index), EDITOR_CHUNK);
+                    n = tui_text_model_read(editor->model, index, buf, n);
 
-                for (i = 0; i < n; ++i)
-                    tui_putc(draw, col + i, row, (unsigned char)buf[i], attr);
+                    if (n <= 0)
+                        break;
 
-                col += n;
-                index += n;
+                    tui_chars(draw, col, row, buf, n, attr);
+
+                    col += n;
+                    index += n;
+                }
             }
+
+            if (col < col_to)
+                tui_fill(draw, col, row, col_to - col, 1, ' ', attr);
         }
 
-        pos = end < len ? end + 1 : -1;
+        if (pos >= 0)
+            pos = end < len ? end + 1 : -1;
     }
 
     if (!editor->readonly && tui_control_has_focus(control)) {

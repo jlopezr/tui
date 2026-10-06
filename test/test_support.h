@@ -31,6 +31,13 @@ int test_key(TuiDesktop *desktop, int key);
 extern int test_cells_written;
 
 /*
+ * Writes that changed the cell they wrote to. The MiniCPU console skips the others
+ * (it compares with a copy of the screen), so these are the ones that reach the
+ * text RAM.
+ */
+extern int test_cells_changed;
+
+/*
  * Counts the writes that change a cell outside a rectangle (x2, y2 exclusive),
  * from test_watch_outside() until test_watch_off().
  */

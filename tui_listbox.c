@@ -333,55 +333,32 @@ static void listbox_draw(TuiControl *control, TuiDraw *draw)
     TuiListBox *list;
     int row;
     int index;
-    int x;
     int width;
     int attr;
-    const char *text;
 
     list = (TuiListBox *)control;
-    attr = tui_control_attr(control);
 
     listbox_sync_scrollbar(list);
     width = listbox_content_width(list);
 
-    tui_fill(draw,
-             0, 0,
-             width,
-             control->height,
-             ' ',
-             attr);
-
+    /* Each row is written once: its text and then the spaces up to the width. */
     for (row = 0; row < control->height; ++row) {
         index = list->offset + row;
+        attr = tui_control_attr(control);
 
-        if (index < 0 || index >= list->count)
+        if (index < 0 || index >= list->count) {
+            tui_text_padded(draw, 0, row, width, 0, attr);
             continue;
+        }
 
         if (index == list->selected) {
             if (tui_control_has_focus(control))
                 attr = TUI_ATTR_MENU_SELECTED;
             else
                 attr = TUI_ATTR(TUI_BLUE, TUI_LIGHTGRAY);
-        } else {
-            attr = tui_control_attr(control);
         }
 
-        tui_fill(draw, 0, row,
-                 width, 1,
-                 ' ', attr);
-
-        text = list->items[index];
-
-        if (text == 0)
-            continue;
-
-        for (x = 0;
-             x < width && text[x] != '\0';
-             ++x) {
-            tui_putc(draw, x, row,
-                     (unsigned char)text[x],
-                     attr);
-        }
+        tui_text_padded(draw, 0, row, width, list->items[index], attr);
     }
 }
 
