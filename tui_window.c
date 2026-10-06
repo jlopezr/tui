@@ -126,12 +126,25 @@ static void window_draw(TuiControl *control, TuiDraw *draw)
 
     attr = tui_control_attr(control);
 
-    tui_fill(draw,
-             0, 0,
-             control->width,
-             control->height,
-             ' ',
-             attr);
+    /*
+     * The frame writes every cell of the border, so only the inside is filled: a
+     * repaint of just the ring (the window became active or inactive) would
+     * otherwise write each of its cells twice.
+     */
+    if (control->width >= 2 && control->height >= 2)
+        tui_fill(draw,
+                 1, 1,
+                 control->width - 2,
+                 control->height - 2,
+                 ' ',
+                 attr);
+    else
+        tui_fill(draw,
+                 0, 0,
+                 control->width,
+                 control->height,
+                 ' ',
+                 attr);
 
     window_frame(draw,
                  control->width,

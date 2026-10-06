@@ -1246,8 +1246,8 @@ static void test_pending_textarea_focus_draws_only_the_cursor(void)
         tui_desktop_set_focus(&desktop, i % 2 == 0 ? &a2.control : &a1.control);
         CHECK(!desktop.dirty_all);
         written = paint_and_check(&desktop);
-        /* Two frames of 56 cells, written twice (background, then frame). */
-        CHECK(written >= 100 && written <= 2 * 122 + 20);
+        /* Two frames of 56 cells, and the title written over each of them. */
+        CHECK(written >= 100 && written <= 2 * (56 + 12) + 20);
         CHECK(checked_cursor_visible);
     }
 
