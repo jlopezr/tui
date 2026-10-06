@@ -707,8 +707,28 @@ static void test_pending_frame_only(void)
     CHECK(pending_equals_full(&s.desktop));
 }
 
-/* Moving the focus to another window: two controls and two frames, four entries. */
+/*
+ * Moving the focus to another window: two controls and, if the windows are drawn
+ * differently when active, two frames; four entries.
+ */
 static void test_pending_focus_across_windows_uses_four_entries(void)
+{
+    Scene s;
+
+    scene_build(&s);
+    tui_window_add_flags(&s.left, TUI_WINDOW_ACTIVE_DOUBLE);
+    tui_window_add_flags(&s.right, TUI_WINDOW_ACTIVE_DOUBLE);
+    tui_draw(&s.desktop);
+
+    tui_desktop_set_focus(&s.desktop, &s.edit_right.control);
+    CHECK(s.desktop.dirty_count == 2);
+    CHECK(s.desktop.frame_count == 2);
+    CHECK(!s.desktop.dirty_all);
+    CHECK(pending_equals_full(&s.desktop));
+}
+
+/* Windows that look the same active or not: their frames are not repainted. */
+static void test_pending_focus_across_plain_windows_skips_frames(void)
 {
     Scene s;
 
@@ -717,8 +737,7 @@ static void test_pending_focus_across_windows_uses_four_entries(void)
 
     tui_desktop_set_focus(&s.desktop, &s.edit_right.control);
     CHECK(s.desktop.dirty_count == 2);
-    CHECK(s.desktop.frame_count == 2);
-    CHECK(!s.desktop.dirty_all);
+    CHECK(s.desktop.frame_count == 0);
     CHECK(pending_equals_full(&s.desktop));
 }
 
@@ -1246,10 +1265,18 @@ static void test_pending_textarea_focus_draws_only_the_cursor(void)
         tui_desktop_set_focus(&desktop, i % 2 == 0 ? &a2.control : &a1.control);
         CHECK(!desktop.dirty_all);
         written = paint_and_check(&desktop);
-        /* Two frames of 56 cells, and the title written over each of them. */
-        CHECK(written >= 100 && written <= 2 * (56 + 12) + 20);
+        /* These windows look the same active or not: just the two cursor cells. */
+        CHECK(written >= 1 && written <= 8);
         CHECK(checked_cursor_visible);
     }
+
+    /* Drawn double when active, the frames change too: the ring, and the title. */
+    tui_window_add_flags(&w1, TUI_WINDOW_ACTIVE_DOUBLE);
+    tui_window_add_flags(&w2, TUI_WINDOW_ACTIVE_DOUBLE);
+    paint_and_check(&desktop);
+    tui_desktop_set_focus(&desktop, &a2.control);
+    written = paint_and_check(&desktop);
+    CHECK(written >= 100 && written <= 2 * (56 + 12) + 20);
 
     /* A read-only one has no cursor: nothing of it is drawn. */
     tui_textarea_set_readonly(&a2, 1);
@@ -2001,6 +2028,8 @@ void test_mini_keys_suite(void)
                   test_pending_focus_draws_only_what_changes);
     test_run_case("pending redraw: list focus draws one row",
                   test_pending_listbox_focus_draws_one_row);
+    test_run_case("pending redraw: plain windows skip their frames on focus",
+                  test_pending_focus_across_plain_windows_skips_frames);
     test_run_case("pending redraw: text area focus draws only the cursor",
                   test_pending_textarea_focus_draws_only_the_cursor);
     test_run_case("pending redraw: list moves draw two rows",

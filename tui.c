@@ -466,6 +466,17 @@ static void tui_invalidate_focus(TuiControl *control)
         tui_invalidate(control);
 }
 
+/*
+ * A window became active or inactive. Its frame looks different only when it is
+ * drawn double while active (see window_draw); for any other window nothing changes.
+ */
+static void tui_invalidate_active_frame(TuiControl *window)
+{
+    if (window != 0 &&
+        (((TuiWindow *)window)->flags & TUI_WINDOW_ACTIVE_DOUBLE))
+        tui_invalidate_frame(window);
+}
+
 void tui_desktop_set_focus(TuiDesktop *desktop,
                            TuiControl *control)
 {
@@ -488,8 +499,8 @@ void tui_desktop_set_focus(TuiDesktop *desktop,
         tui_invalidate_focus(control);
 
     if (tui_window_of(old) != tui_window_of(control)) {
-        tui_invalidate_frame(tui_window_of(old));
-        tui_invalidate_frame(tui_window_of(control));
+        tui_invalidate_active_frame(tui_window_of(old));
+        tui_invalidate_active_frame(tui_window_of(control));
     }
 }
 
