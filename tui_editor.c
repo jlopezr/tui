@@ -2,12 +2,14 @@
 
 static void editor_draw(TuiControl *control, TuiDraw *draw);
 static int editor_event(TuiControl *control, TuiEvent *event);
+static void editor_focus_changed(TuiControl *control);
 
 static const TuiClass editor_class = {
     editor_draw,
     editor_event,
     0,
-    TUI_CLASS_OPAQUE
+    TUI_CLASS_OPAQUE,
+    editor_focus_changed
 };
 
 /*
@@ -17,8 +19,16 @@ static const TuiClass editor_class = {
  * Everything is derived from the model through its public
  * operations only; lines are found by walking the characters.
  * Nothing is cached on purpose.
+ *
+ * The text is read EDITOR_CHUNK characters at a time, never one
+ * per call: each call goes through the model's class and costs
+ * far more than looking at the character, and one key press used
+ * to make thousands of them (a handful of passes over the text,
+ * at ~100 instructions a character on the MiniCPU).
  * ------------------------------------------------------------
  */
+
+#define EDITOR_CHUNK 32
 
 static int editor_length(const TuiEditor *editor)
 {
@@ -39,82 +49,169 @@ static char editor_at(const TuiEditor *editor, int pos)
 
 static int editor_line_count(const TuiEditor *editor)
 {
+    char buf[EDITOR_CHUNK];
     int count;
+    int pos;
     int len;
+    int n;
     int i;
 
     count = 1;
+    pos = 0;
     len = editor_length(editor);
 
-    for (i = 0; i < len; ++i) {
-        if (editor_at(editor, i) == '\n')
-            ++count;
+    while (pos < len) {
+        n = tui_text_model_read(editor->model, pos, buf, EDITOR_CHUNK);
+
+        if (n <= 0)
+            break;
+
+        for (i = 0; i < n; ++i) {
+            if (buf[i] == '\n')
+                ++count;
+        }
+
+        pos += n;
     }
 
     return count;
 }
 
-static int editor_max_line_length(const TuiEditor *editor)
+/* Number of lines and length of the longest one, in a single pass over the text. */
+static void editor_measure(const TuiEditor *editor,
+                           int *lines,
+                           int *extent)
 {
-    int best;
+    char buf[EDITOR_CHUNK];
     int cur;
+    int pos;
     int len;
+    int n;
     int i;
 
-    best = 0;
+    *lines = 1;
+    *extent = 0;
     cur = 0;
+    pos = 0;
     len = editor_length(editor);
 
-    for (i = 0; i < len; ++i) {
-        if (editor_at(editor, i) == '\n') {
-            cur = 0;
-            continue;
+    while (pos < len) {
+        n = tui_text_model_read(editor->model, pos, buf, EDITOR_CHUNK);
+
+        if (n <= 0)
+            break;
+
+        for (i = 0; i < n; ++i) {
+            if (buf[i] == '\n') {
+                ++*lines;
+                cur = 0;
+                continue;
+            }
+
+            ++cur;
+
+            if (cur > *extent)
+                *extent = cur;
         }
 
-        ++cur;
-
-        if (cur > best)
-            best = cur;
+        pos += n;
     }
-
-    return best;
 }
 
 static int editor_line_start(const TuiEditor *editor, int pos)
 {
-    while (pos > 0 && editor_at(editor, pos - 1) != '\n')
-        --pos;
+    char buf[EDITOR_CHUNK];
+    int start;
+    int n;
+    int i;
 
-    return pos;
+    while (pos > 0) {
+        start = pos > EDITOR_CHUNK ? pos - EDITOR_CHUNK : 0;
+        n = tui_text_model_read(editor->model, start, buf, pos - start);
+
+        if (n != pos - start) {
+            /* A short read (the position is past the text): one at a time. */
+            while (pos > 0 && editor_at(editor, pos - 1) != '\n')
+                --pos;
+
+            return pos;
+        }
+
+        for (i = n - 1; i >= 0; --i) {
+            if (buf[i] == '\n')
+                return start + i + 1;
+        }
+
+        pos = start;
+    }
+
+    return 0;
 }
 
 static int editor_line_end(const TuiEditor *editor, int pos)
 {
+    char buf[EDITOR_CHUNK];
     int len;
+    int n;
+    int i;
 
     len = editor_length(editor);
 
-    while (pos < len && editor_at(editor, pos) != '\n')
-        ++pos;
+    while (pos < len) {
+        n = tui_text_model_read(editor->model, pos, buf, EDITOR_CHUNK);
+
+        if (n <= 0)
+            return len;
+
+        for (i = 0; i < n; ++i) {
+            if (buf[i] == '\n')
+                return pos + i;
+        }
+
+        pos += n;
+    }
 
     return pos;
 }
 
+/* Line and column of the cursor, with a single walk from the start of the text. */
 static void editor_cursor_xy(const TuiEditor *editor,
                              int *x,
                              int *y)
 {
+    char buf[EDITOR_CHUNK];
+    int line_start;
+    int pos;
+    int want;
+    int n;
     int i;
 
     *y = 0;
+    line_start = 0;
+    pos = 0;
 
-    for (i = 0; i < editor->cursor_pos; ++i) {
-        if (editor_at(editor, i) == '\n')
-            ++*y;
+    while (pos < editor->cursor_pos) {
+        want = editor->cursor_pos - pos;
+
+        if (want > EDITOR_CHUNK)
+            want = EDITOR_CHUNK;
+
+        n = tui_text_model_read(editor->model, pos, buf, want);
+
+        if (n <= 0)
+            break;
+
+        for (i = 0; i < n; ++i) {
+            if (buf[i] == '\n') {
+                ++*y;
+                line_start = pos + i + 1;
+            }
+        }
+
+        pos += n;
     }
 
-    *x = editor->cursor_pos -
-         editor_line_start(editor, editor->cursor_pos);
+    *x = editor->cursor_pos - line_start;
 }
 
 /* Offset for a line/column; clamped to the line and the document. */
@@ -155,29 +252,17 @@ static int editor_pos_from_xy(const TuiEditor *editor,
  * room of the other, so iterate; both flags only ever turn on.
  * The cursor cell counts as horizontal extent while editing.
  */
-static void editor_layout(const TuiEditor *editor,
-                          int *show_v,
-                          int *show_h,
-                          int *content_w,
-                          int *content_h)
+static void editor_layout_from(const TuiEditor *editor,
+                               int lines,
+                               int extent,
+                               int *show_v,
+                               int *show_h,
+                               int *content_w,
+                               int *content_h)
 {
-    int lines;
-    int extent;
     int need_v;
     int need_h;
-    int cx;
-    int cy;
     int i;
-
-    lines = editor_line_count(editor);
-    extent = editor_max_line_length(editor);
-
-    if (!editor->readonly) {
-        editor_cursor_xy(editor, &cx, &cy);
-
-        if (cx + 1 > extent)
-            extent = cx + 1;
-    }
 
     *show_v = 0;
     *show_h = 0;
@@ -200,11 +285,50 @@ static void editor_layout(const TuiEditor *editor,
     *content_h = tui_max(0, editor->control.height - *show_h);
 }
 
+/* The same, finding the lines and the extent (cursor cell included) itself. */
+static void editor_layout(const TuiEditor *editor,
+                          int *show_v,
+                          int *show_h,
+                          int *content_w,
+                          int *content_h)
+{
+    int lines;
+    int extent;
+    int cx;
+    int cy;
+
+    editor_measure(editor, &lines, &extent);
+
+    if (!editor->readonly) {
+        editor_cursor_xy(editor, &cx, &cy);
+
+        if (cx + 1 > extent)
+            extent = cx + 1;
+    }
+
+    editor_layout_from(editor, lines, extent,
+                       show_v, show_h, content_w, content_h);
+}
+
+/* What editor_sync() found out, for whoever needs it next (drawing, the mouse). */
+typedef struct EditorView {
+    int show_v;
+    int show_h;
+    int cw;
+    int ch;
+    int cx;
+    int cy;
+    int lines;
+    int extent;         /* the longest line, or the cursor cell if it is further */
+} EditorView;
+
 /*
  * Single place that derives viewport and scroll bar state from the
  * text. With 'follow' (or after a resize) the cursor is kept visible.
+ * The text is walked once for the layout and once up to the cursor, and
+ * the result is left in 'view' so that nobody has to walk it again.
  */
-static void editor_sync(TuiEditor *editor, int follow)
+static void editor_sync_view(TuiEditor *editor, int follow, EditorView *view)
 {
     int show_v;
     int show_h;
@@ -221,14 +345,22 @@ static void editor_sync(TuiEditor *editor, int follow)
     if (editor->cursor_pos > editor_length(editor))
         editor->cursor_pos = editor_length(editor);
 
-    editor_layout(editor, &show_v, &show_h, &cw, &ch);
-
-    lines = editor_line_count(editor);
-    extent = editor_max_line_length(editor);
+    editor_measure(editor, &lines, &extent);
     editor_cursor_xy(editor, &cx, &cy);
 
     if (!editor->readonly && cx + 1 > extent)
         extent = cx + 1;
+
+    editor_layout_from(editor, lines, extent, &show_v, &show_h, &cw, &ch);
+
+    view->show_v = show_v;
+    view->show_h = show_h;
+    view->cw = cw;
+    view->ch = ch;
+    view->cx = cx;
+    view->cy = cy;
+    view->lines = lines;
+    view->extent = extent;
 
     if (editor->control.width != editor->last_width ||
         editor->control.height != editor->last_height) {
@@ -286,6 +418,13 @@ static void editor_sync(TuiEditor *editor, int follow)
     } else {
         editor->hscroll.control.flags &= ~TUI_VISIBLE;
     }
+}
+
+static void editor_sync(TuiEditor *editor, int follow)
+{
+    EditorView view;
+
+    editor_sync_view(editor, follow, &view);
 }
 
 /* Internal scroll bars share one adapter that updates the viewport. */
@@ -573,15 +712,15 @@ static int editor_nav_key(TuiEditor *editor, int key)
 
 static void editor_mouse(TuiEditor *editor, TuiEvent *event)
 {
-    int show_v;
-    int show_h;
+    EditorView view;
     int cw;
     int ch;
     int x;
     int y;
 
-    editor_sync(editor, 0);
-    editor_layout(editor, &show_v, &show_h, &cw, &ch);
+    editor_sync_view(editor, 0, &view);
+    cw = view.cw;
+    ch = view.ch;
     tui_control_screen_to_local(&editor->control,
                                 event->mouse_x,
                                 event->mouse_y,
@@ -599,15 +738,165 @@ static void editor_mouse(TuiEditor *editor, TuiEvent *event)
 
 static int editor_handle(TuiControl *control, TuiEvent *event);
 
+/* What an event may change on screen, as it was before the event. */
+typedef struct EditorBefore {
+    int top_line;
+    int left_col;
+    int show_v;
+    int show_h;
+    int length;
+    int lines;
+    int extent;
+    int cx;
+    int cy;
+} EditorBefore;
+
+static void editor_snapshot(const TuiEditor *editor, EditorBefore *before)
+{
+    before->top_line = editor->top_line;
+    before->left_col = editor->left_col;
+    before->show_v = (editor->vscroll.control.flags & TUI_VISIBLE) != 0;
+    before->show_h = (editor->hscroll.control.flags & TUI_VISIBLE) != 0;
+    before->length = editor_length(editor);
+
+    editor_measure(editor, &before->lines, &before->extent);
+    editor_cursor_xy(editor, &before->cx, &before->cy);
+
+    if (!editor->readonly && before->cx + 1 > before->extent)
+        before->extent = before->cx + 1;
+}
+
+/*
+ * Reports to the desktop what the event changed, and no more: the editor used to
+ * invalidate itself whole after anything, which is two thousand cells to move the
+ * cursor. It is the handler, not the draw function, that knows what happened.
+ *
+ *   the viewport moved (it scrolled, a scroll bar came or went)   all of it
+ *   lines were added or removed                                   from the first
+ *                                                                 changed row down
+ *   a character was typed or deleted on a line                   that row, from the
+ *                                                                 column that changed
+ *   only the cursor moved                                         the cell it is on
+ *
+ * The scroll bars are children: they are told only when their thumb changes (their
+ * setters do not invalidate).
+ */
+static void editor_invalidate_changes(TuiEditor *editor,
+                                      const EditorBefore *before)
+{
+    EditorView view;
+    TuiControl *control;
+    int cx;
+    int cy;
+    int col;
+    int row;
+    int last;
+
+    control = &editor->control;
+    editor_sync_view(editor, 0, &view);
+
+    if (editor->top_line != before->top_line ||
+        editor->left_col != before->left_col ||
+        view.show_v != before->show_v ||
+        view.show_h != before->show_h) {
+        tui_invalidate(control);
+        return;
+    }
+
+    cx = view.cx - editor->left_col;
+    cy = view.cy - editor->top_line;
+
+    if (cx < 0 || cx >= view.cw || cy < 0 || cy >= view.ch) {
+        tui_invalidate(control);
+        return;
+    }
+
+    if (view.show_v && view.lines != before->lines)
+        tui_invalidate(&editor->vscroll.control);
+
+    if (view.show_h && view.extent != before->extent)
+        tui_invalidate(&editor->hscroll.control);
+
+    if (editor_length(editor) == before->length) {
+        /* Nothing was typed: either the cursor moved, or nothing happened. */
+        if (view.cx == before->cx && view.cy == before->cy)
+            tui_event_done(control);
+        else
+            tui_invalidate_rect(control, cx, cy, 1, 1);
+
+        return;
+    }
+
+    if (view.lines != before->lines) {
+        /* Down to the last line there was, or is: below it is background. */
+        row = tui_min(before->cy, view.cy) - editor->top_line;
+        row = tui_max(0, row);
+        last = tui_max(before->lines, view.lines) - editor->top_line;
+        last = tui_min(view.ch, last);
+        tui_invalidate_rect(control, 0, row, view.cw, last - row);
+        return;
+    }
+
+    col = tui_min(before->cx, view.cx) - editor->left_col;
+    col = tui_max(0, col);
+    tui_invalidate_rect(control, col, cy, view.cw - col, 1);
+}
+
+/*
+ * The focus moved onto or off the editor. The only thing that looks different is
+ * the cursor, which editor_draw() asks for while the editor has the focus, so the
+ * cell it is on is all there is to draw (the desktop has already hidden the cursor,
+ * and shows it again when that cell is drawn). Nothing here may change the
+ * viewport: the control may not have been laid out yet, so the size is only used to
+ * check that the cursor is in view, and if it is not the whole editor is drawn.
+ */
+static void editor_focus_changed(TuiControl *control)
+{
+    TuiEditor *editor;
+    int cw;
+    int ch;
+    int cx;
+    int cy;
+
+    editor = (TuiEditor *)control;
+
+    if (editor->model == 0 || editor->readonly) {
+        /* No cursor to show or hide. */
+        tui_event_done(control);
+        return;
+    }
+
+    cw = control->width - ((editor->vscroll.control.flags & TUI_VISIBLE) != 0);
+    ch = control->height - ((editor->hscroll.control.flags & TUI_VISIBLE) != 0);
+
+    editor_cursor_xy(editor, &cx, &cy);
+    cx -= editor->left_col;
+    cy -= editor->top_line;
+
+    if (cx >= 0 && cx < cw && cy >= 0 && cy < ch)
+        tui_invalidate_rect(control, cx, cy, 1, 1);
+    else
+        tui_invalidate(control);
+}
+
 /* Whatever the control handled may have changed what it shows. */
 static int editor_event(TuiControl *control, TuiEvent *event)
 {
+    TuiEditor *editor;
+    EditorBefore before;
     int handled;
+
+    editor = (TuiEditor *)control;
+
+    if (editor->model == 0)
+        return editor_handle(control, event);
+
+    editor_snapshot(editor, &before);
 
     handled = editor_handle(control, event);
 
     if (handled)
-        tui_invalidate(control);
+        editor_invalidate_changes(editor, &before);
 
     return handled;
 }
@@ -663,8 +952,8 @@ static int editor_handle(TuiControl *control, TuiEvent *event)
 static void editor_draw(TuiControl *control, TuiDraw *draw)
 {
     TuiEditor *editor;
-    int show_v;
-    int show_h;
+    EditorView view;
+    char buf[EDITOR_CHUNK];
     int cw;
     int ch;
     int attr;
@@ -676,6 +965,12 @@ static void editor_draw(TuiControl *control, TuiDraw *draw)
     int cy;
     int end;
     int index;
+    int n;
+    int i;
+    int row_from;
+    int row_to;
+    int col_from;
+    int col_to;
 
     editor = (TuiEditor *)control;
     attr = tui_control_attr(control);
@@ -685,12 +980,13 @@ static void editor_draw(TuiControl *control, TuiDraw *draw)
         return;
     }
 
-    editor_sync(editor, 0);
-    editor_layout(editor, &show_v, &show_h, &cw, &ch);
+    editor_sync_view(editor, 0, &view);
+    cw = view.cw;
+    ch = view.ch;
 
     tui_fill(draw, 0, 0, cw, ch, ' ', attr);
 
-    if (show_v && show_h) {
+    if (view.show_v && view.show_h) {
         tui_fill(draw, cw, ch, 1, 1, ' ',
                  TUI_ATTR(TUI_BLACK, TUI_LIGHTGRAY));
     }
@@ -705,27 +1001,45 @@ static void editor_draw(TuiControl *control, TuiDraw *draw)
         pos = pos < len ? pos + 1 : -1;
     }
 
-    for (row = 0; row < ch && pos >= 0; ++row) {
+    /*
+     * Only what the clip lets through is worth reading: rows above it are walked
+     * past (their length is needed to find the next one), rows below it are not
+     * looked at, and in the rows that are drawn only the columns it covers are read.
+     */
+    row_from = draw->y1 - draw->oy;
+    row_to = draw->y2 - draw->oy;
+    col_from = tui_max(0, draw->x1 - draw->ox);
+    col_to = tui_min(cw, draw->x2 - draw->ox);
+
+    for (row = 0; row < ch && row < row_to && pos >= 0; ++row) {
         end = editor_line_end(editor, pos);
 
-        for (col = 0; col < cw; ++col) {
+        if (row >= row_from) {
+            /* The visible part of the line, a chunk of the model at a time. */
+            col = col_from;
             index = pos + editor->left_col + col;
 
-            if (index >= end)
-                break;
+            while (col < col_to && index < end) {
+                n = tui_min(tui_min(col_to - col, end - index), EDITOR_CHUNK);
+                n = tui_text_model_read(editor->model, index, buf, n);
 
-            tui_putc(draw, col, row,
-                     (unsigned char)editor_at(editor, index),
-                     attr);
+                if (n <= 0)
+                    break;
+
+                for (i = 0; i < n; ++i)
+                    tui_putc(draw, col + i, row, buf[i] & 0xff, attr);
+
+                col += n;
+                index += n;
+            }
         }
 
         pos = end < len ? end + 1 : -1;
     }
 
     if (!editor->readonly && tui_control_has_focus(control)) {
-        editor_cursor_xy(editor, &cx, &cy);
-        cx -= editor->left_col;
-        cy -= editor->top_line;
+        cx = view.cx - editor->left_col;
+        cy = view.cy - editor->top_line;
 
         if (cx >= 0 && cx < cw && cy >= 0 && cy < ch)
             tui_draw_cursor(draw, cx, cy);

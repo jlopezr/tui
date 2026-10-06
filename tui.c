@@ -457,6 +457,15 @@ void tui_desktop_init(TuiDesktop *desktop)
     desktop->draw_started = 0;
 }
 
+/* The focus moved onto or off 'control': repaint what looks different. */
+static void tui_invalidate_focus(TuiControl *control)
+{
+    if (control->cls != 0 && control->cls->focus_changed != 0)
+        control->cls->focus_changed(control);
+    else
+        tui_invalidate(control);
+}
+
 void tui_desktop_set_focus(TuiDesktop *desktop,
                            TuiControl *control)
 {
@@ -473,10 +482,10 @@ void tui_desktop_set_focus(TuiDesktop *desktop,
     desktop->cursor_visible = 0;
 
     if (old != 0)
-        tui_invalidate(old);
+        tui_invalidate_focus(old);
 
     if (control != 0)
-        tui_invalidate(control);
+        tui_invalidate_focus(control);
 
     if (tui_window_of(old) != tui_window_of(control)) {
         tui_invalidate_frame(tui_window_of(old));
@@ -960,6 +969,10 @@ static void tui_dirty_add(TuiDesktop *desktop,
     int best;
     int best_area;
     int area;
+    int ux1;
+    int uy1;
+    int ux2;
+    int uy2;
 
     ++desktop->dirty_serial;
 
@@ -979,6 +992,42 @@ static void tui_dirty_add(TuiDesktop *desktop,
         if (desktop->dirty[i][0] <= x1 && desktop->dirty[i][1] <= y1 &&
             desktop->dirty[i][2] >= x2 && desktop->dirty[i][3] >= y2)
             return;
+    }
+
+    /*
+     * Rectangles that overlap would paint the overlap twice, and painting a
+     * region is what costs. Take their union when it is no bigger than the two
+     * together: a window dragged a few cells leaves its old and its new place
+     * almost on top of each other, and that is one rectangle, not two. The union
+     * can now reach others, so start over after each merge; every merge frees a
+     * slot, so this ends. The order of the list does not matter.
+     */
+    i = 0;
+    while (i < desktop->dirty_count) {
+        ux1 = tui_min(x1, desktop->dirty[i][0]);
+        uy1 = tui_min(y1, desktop->dirty[i][1]);
+        ux2 = tui_max(x2, desktop->dirty[i][2]);
+        uy2 = tui_max(y2, desktop->dirty[i][3]);
+
+        if (x1 < desktop->dirty[i][2] && desktop->dirty[i][0] < x2 &&
+            y1 < desktop->dirty[i][3] && desktop->dirty[i][1] < y2 &&
+            (ux2 - ux1) * (uy2 - uy1) <=
+                (x2 - x1) * (y2 - y1) +
+                (desktop->dirty[i][2] - desktop->dirty[i][0]) *
+                (desktop->dirty[i][3] - desktop->dirty[i][1])) {
+            x1 = ux1;
+            y1 = uy1;
+            x2 = ux2;
+            y2 = uy2;
+
+            --desktop->dirty_count;
+            for (j = 0; j < 4; ++j)
+                desktop->dirty[i][j] = desktop->dirty[desktop->dirty_count][j];
+
+            i = 0;
+        } else {
+            ++i;
+        }
     }
 
     /* The new one swallows the ones it covers, which frees their slots. */
@@ -1051,8 +1100,15 @@ void tui_invalidate_rect(TuiControl *control,
                          int x, int y, int width, int height)
 {
     TuiDesktop *desktop;
+    TuiControl *ancestor;
     int sx;
     int sy;
+    int ax;
+    int ay;
+    int x1;
+    int y1;
+    int x2;
+    int y2;
 
     desktop = tui_find_desktop(control);
 
@@ -1061,7 +1117,33 @@ void tui_invalidate_rect(TuiControl *control,
 
     tui_control_screen_pos(control, &sx, &sy);
 
-    tui_dirty_add(desktop, sx + x, sy + y, sx + x + width, sy + y + height);
+    x1 = sx + x;
+    y1 = sy + y;
+    x2 = x1 + width;
+    y2 = y1 + height;
+
+    /*
+     * A window only lets its children show inside its border (see
+     * tui_get_child_context), so what lies outside it changes nothing on screen.
+     * Leaving it in would repaint, layer by layer from the bottom up, whatever is
+     * there: a window dragged past the edge of its parent would flash the windows
+     * beneath it outside the parent until the ones on top were drawn again. The
+     * rectangle may end up empty, which is still an invalidation (the event was
+     * handled and reported what it changed, namely nothing visible).
+     */
+    for (ancestor = control->parent; ancestor != 0; ancestor = ancestor->parent) {
+        if (ancestor->cls != &tui_window_class)
+            continue;
+
+        tui_control_screen_pos(ancestor, &ax, &ay);
+
+        x1 = tui_max(x1, ax + 1);
+        y1 = tui_max(y1, ay + 1);
+        x2 = tui_min(x2, ax + ancestor->width - 1);
+        y2 = tui_min(y2, ay + ancestor->height - 1);
+    }
+
+    tui_dirty_add(desktop, x1, y1, x2, y2);
 }
 
 void tui_invalidate(TuiControl *control)
@@ -1549,12 +1631,14 @@ int tui_dispatch(TuiDesktop *desktop,
  * ------------------------------------------------------------
  */
 
-int tui_read_event(TuiEvent *event)
+/*
+ * The console keeps the details of a mouse event only until the next one, so an
+ * event is built the moment its key code comes back.
+ */
+static void tui_make_event(TuiEvent *event, int key)
 {
     event->type = TUI_EV_KEY;
-
-    event->key =
-        tui_console_key();
+    event->key = key;
 
     event->command = TUI_CMD_NONE;
     event->source = 0;
@@ -1573,6 +1657,47 @@ int tui_read_event(TuiEvent *event)
                           &event->mouse_action,
                           &event->mouse_buttons);
     }
+}
+
+/* An event read ahead that was not a mouse move, kept for the next call. */
+static TuiEvent tui_lookahead;
+static int tui_lookahead_valid;
+
+/*
+ * Mouse moves that arrive back to back are one: only where the pointer ends up
+ * matters, and every one that is dispatched costs a repaint, which takes longer
+ * than the moves take to arrive (a window being dragged would trail behind the
+ * mouse). Nothing else is merged: keys, presses and releases all get through, in
+ * order. Whatever follows the last move is kept for the next call.
+ */
+int tui_read_event(TuiEvent *event)
+{
+    int key;
+
+    if (tui_lookahead_valid) {
+        *event = tui_lookahead;
+        tui_lookahead_valid = 0;
+    } else {
+        tui_make_event(event, tui_console_key());
+    }
+
+    while (event->type == TUI_EV_MOUSE &&
+           event->mouse_action == TUI_MOUSE_MOVE) {
+        key = tui_console_poll();
+
+        if (key == TUI_KEY_NONE)
+            break;
+
+        tui_make_event(&tui_lookahead, key);
+
+        if (tui_lookahead.type == TUI_EV_MOUSE &&
+            tui_lookahead.mouse_action == TUI_MOUSE_MOVE) {
+            *event = tui_lookahead;
+        } else {
+            tui_lookahead_valid = 1;
+            break;
+        }
+    }
 
     return 1;
 }
@@ -1586,6 +1711,8 @@ int tui_read_event(TuiEvent *event)
 
 int tui_init(void)
 {
+    tui_lookahead_valid = 0;
+
     return tui_console_init();
 }
 

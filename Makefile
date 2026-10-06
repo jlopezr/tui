@@ -90,10 +90,40 @@ mini-sim: $(MINI_BIN)
 mini-run: $(MINI_BIN)
 	run-board --prototype $(MINI_PROTOTYPE) --program $(MINI_BIN) $(MINI_PORT)
 
+# Medicion de eventos pendientes al empezar cada repintado (TODO de z.tui). La
+# demo compilada con TUI_PROFILE_EVENTS escribe el resultado en las dos primeras
+# filas de la pantalla: repintados, eventos, repintados con la cola no vacia,
+# eventos en cola, maximo, fotogramas repintando y el histograma de la cola.
+#
+#   make mini-profile       arrastra una ventana (test/profile_drag.txt)
+#   make mini-profile MINI_PROFILE_SCRIPT=test/profile_editor_repeat.txt
+#                           flecha sostenida en el Editor
+#   make mini-profile MINI_PROFILE_SCRIPT=test/profile_editor_type.txt
+#                           teclear deprisa en el Editor
+#   test/profile_editor_nav.txt, _letter.txt y _click.txt miden el coste de UNA
+#   tecla o clic en el Editor, restando test/profile_editor_none.txt (vease el TODO).
+#   test/profile_tab.txt mide un TAB en la pantalla Controls, restando
+#   test/profile_tab_none.txt.
+#
+# El reloj del simulador son instrucciones: 75000 por fotograma (4,5 MIPS a 60 Hz).
+MINI_PROFILE_BIN = _build/tui_profile.bin
+MINI_PROFILE_SCRIPT ?= test/profile_drag.txt
+
+$(MINI_PROFILE_BIN): tui_unity_profile.c $(MINI_SRC) tui.h tui_internal.h console.h
+	mkdir -p _build
+	mini-lcc tui_unity_profile.c -o _build/tui_profile.s
+	mini-asm _build/tui_profile.s -o $(MINI_PROFILE_BIN)
+
+mini-profile: $(MINI_PROFILE_BIN)
+	: > _build/empty.bin
+	cpusim $(MINI_PROFILE_BIN) --serial-input _build/empty.bin --input-script $(MINI_PROFILE_SCRIPT) --console-output _build/profile.txt --frame-instructions 75000 --run-limit $(MINI_SIM_MAX)
+	head -n 2 _build/profile.txt
+
 clean:
 	rm -f $(TARGET) $(UNITY_TARGET) $(WIN32_TARGET) $(TEST_TARGET) $(COVERAGE_TARGET) \
 		$(COVERAGE_DIR)/test_controls.profraw \
 		$(COVERAGE_DIR)/test_controls.profdata \
-		_build/tui_mini.s $(MINI_BIN) _build/keys.bin _build/screen.txt
+		_build/tui_mini.s $(MINI_BIN) _build/keys.bin _build/screen.txt \
+		_build/tui_profile.s $(MINI_PROFILE_BIN) _build/empty.bin _build/profile.txt
 
-.PHONY: all clean test coverage unity win32 mini mini-sim mini-run
+.PHONY: all clean test coverage unity win32 mini mini-sim mini-run mini-profile

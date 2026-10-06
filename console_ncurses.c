@@ -394,12 +394,9 @@ void tui_console_mouse(int *x, int *y, int *action, int *buttons)
     *buttons = tui_mouse_buttons;
 }
 
-int tui_console_key(void)
+/* A key code from getch(), in the TUI's own terms; TUI_KEY_NONE if it is not one. */
+static int tui_ncurses_translate(int ch)
 {
-    int ch;
-
-    ch = getch();
-
     switch (ch) {
     case '\n':
     case '\r':
@@ -470,6 +467,47 @@ int tui_console_key(void)
 
     default:
         return ch;
+    }
+}
+
+int tui_console_poll(void)
+{
+    int ch;
+    int key;
+
+    nodelay(stdscr, TRUE);
+
+    for (;;) {
+        ch = getch();
+
+        if (ch == ERR) {
+            key = TUI_KEY_NONE;
+            break;
+        }
+
+        key = tui_ncurses_translate(ch);
+        if (key != TUI_KEY_NONE)
+            break;
+    }
+
+    nodelay(stdscr, FALSE);
+    return key;
+}
+
+int tui_console_key(void)
+{
+    int ch;
+    int key;
+
+    for (;;) {
+        ch = getch();
+
+        if (ch == ERR)
+            return TUI_KEY_NONE;
+
+        key = tui_ncurses_translate(ch);
+        if (key != TUI_KEY_NONE)
+            return key;
     }
 }
 

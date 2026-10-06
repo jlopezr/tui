@@ -172,30 +172,50 @@ static void window_drag_to(TuiControl *control,
     int sy;
     int px;
     int py;
+    int min_x;
+    int max_x;
+    int min_y;
+    int max_y;
 
     window = (TuiWindow *)control;
 
     sx = event->mouse_x - window->drag_dx;
     sy = event->mouse_y - window->drag_dy;
 
-    /* Keep a useful part of the title bar on the desktop. */
-    sx = tui_max(sx, 4 - control->width);
-    sx = tui_min(sx, desktop->control.width - 4);
-    sy = tui_max(sy, 0);
-    sy = tui_min(sy, desktop->control.height - 1);
-
     /* Parent's client origin, in screen coordinates. */
     px = 0;
     py = 0;
 
+    /* Keep a useful part of the title bar on the desktop. */
+    min_x = 4 - control->width;
+    max_x = desktop->control.width - 4;
+    min_y = 0;
+    max_y = desktop->control.height - 1;
+
     if (control->parent != 0) {
         tui_control_screen_pos(control->parent, &px, &py);
 
+        /*
+         * And inside the parent when it is a window: it only shows its children
+         * within its border, so a window dragged out of it entirely would vanish
+         * and could not be grabbed again. The same four cells of title stay in
+         * view, on a row of its client area.
+         */
         if (control->parent->cls == &tui_window_class) {
             px += 1;
             py += 1;
+
+            min_x = tui_max(min_x, px + 4 - control->width);
+            max_x = tui_min(max_x, px + control->parent->width - 2 - 4);
+            min_y = tui_max(min_y, py);
+            max_y = tui_min(max_y, py + control->parent->height - 2 - 1);
         }
     }
+
+    sx = tui_max(sx, min_x);
+    sx = tui_min(sx, max_x);
+    sy = tui_max(sy, min_y);
+    sy = tui_min(sy, max_y);
 
     /* Old place and new place. */
     tui_invalidate(control);

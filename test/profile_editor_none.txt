@@ -1,0 +1,13 @@
+# Llega a la pantalla Editor y sale sin pulsar nada: es lo que hay que restar a
+# profile_editor_nav.txt y profile_editor_letter.txt para quedarse solo con el coste
+# de las teclas (make mini-profile MINI_PROFILE_SCRIPT=...).
+@0        keyboard connect
++0        mouse connect
+@4000000  mouse move -126 0
++1000     mouse move -126 0
++1000     mouse move 0 -120
++1000     mouse move 0 -120
++500000   mouse button left click
++3000000  mouse move 16 72
++500000   mouse button left click
++8000000  key press ESC

@@ -190,6 +190,89 @@ static void test_focus_navigation_and_capture(void)
     CHECK(tui_desktop_get_focus(&desktop) != &hidden.control);
 }
 
+/* Reads one event and says whether it is a mouse event at (x, y) with this action. */
+static int read_mouse(int x, int y, int action)
+{
+    TuiEvent event;
+
+    tui_read_event(&event);
+
+    return event.type == TUI_EV_MOUSE &&
+           event.mouse_x == x &&
+           event.mouse_y == y &&
+           event.mouse_action == action;
+}
+
+static int read_key(int key)
+{
+    TuiEvent event;
+
+    tui_read_event(&event);
+
+    return event.type == TUI_EV_KEY && event.key == key;
+}
+
+/* Mouse moves one after another come out as one, at the last place. */
+static void test_read_event_merges_mouse_moves(void)
+{
+    test_console_clear_input();
+    test_console_push_mouse(1, 1, TUI_MOUSE_MOVE, 0);
+    test_console_push_mouse(2, 1, TUI_MOUSE_MOVE, 0);
+    test_console_push_mouse(3, 2, TUI_MOUSE_MOVE, 0);
+    test_console_push_mouse(4, 2, TUI_MOUSE_MOVE, TUI_MOUSE_LEFT);
+
+    CHECK(read_mouse(4, 2, TUI_MOUSE_MOVE));
+    CHECK(test_console_input_left() == 0);
+}
+
+/*
+ * What is not a move is never merged and never loses its place: the move before
+ * it is delivered first, then the press, and the keys and releases after it.
+ */
+static void test_read_event_keeps_everything_else_in_order(void)
+{
+    test_console_clear_input();
+    test_console_push_mouse(1, 1, TUI_MOUSE_MOVE, 0);
+    test_console_push_mouse(2, 1, TUI_MOUSE_MOVE, 0);
+    test_console_push_mouse(2, 1, TUI_MOUSE_DOWN, TUI_MOUSE_LEFT);
+    test_console_push_mouse(3, 1, TUI_MOUSE_MOVE, TUI_MOUSE_LEFT);
+    test_console_push_mouse(4, 1, TUI_MOUSE_MOVE, TUI_MOUSE_LEFT);
+    test_console_push_key('a');
+    test_console_push_mouse(4, 1, TUI_MOUSE_MOVE, 0);
+    test_console_push_mouse(5, 1, TUI_MOUSE_UP, TUI_MOUSE_LEFT);
+    test_console_push_mouse(6, 1, TUI_MOUSE_UP, TUI_MOUSE_LEFT);
+
+    CHECK(read_mouse(2, 1, TUI_MOUSE_MOVE));
+    CHECK(read_mouse(2, 1, TUI_MOUSE_DOWN));
+    CHECK(read_mouse(4, 1, TUI_MOUSE_MOVE));
+    CHECK(read_key('a'));
+    CHECK(read_mouse(4, 1, TUI_MOUSE_MOVE));
+    CHECK(read_mouse(5, 1, TUI_MOUSE_UP));
+    CHECK(read_mouse(6, 1, TUI_MOUSE_UP));
+    CHECK(test_console_input_left() == 0);
+}
+
+/* Keys alone, and a lone move, pass straight through. */
+static void test_read_event_passes_single_events(void)
+{
+    test_console_clear_input();
+    test_console_push_key('x');
+    test_console_push_key('x');
+    test_console_push_key(TUI_KEY_ENTER);
+    test_console_push_mouse(7, 3, TUI_MOUSE_MOVE, 0);
+    test_console_push_key('y');
+
+    CHECK(read_key('x'));
+    CHECK(read_key('x'));
+    CHECK(read_key(TUI_KEY_ENTER));
+    CHECK(read_mouse(7, 3, TUI_MOUSE_MOVE));
+    CHECK(read_key('y'));
+
+    /* The read-ahead event was a key: nothing is left over from before. */
+    test_console_push_mouse(1, 1, TUI_MOUSE_MOVE, 0);
+    CHECK(read_mouse(1, 1, TUI_MOUSE_MOVE));
+}
+
 void test_core_suite(void)
 {
     test_run_case("core control tree management",
@@ -198,4 +281,10 @@ void test_core_suite(void)
                   test_docking_and_hit_testing);
     test_run_case("core focus navigation and capture",
                   test_focus_navigation_and_capture);
+    test_run_case("read event merges mouse moves",
+                  test_read_event_merges_mouse_moves);
+    test_run_case("read event keeps everything else in order",
+                  test_read_event_keeps_everything_else_in_order);
+    test_run_case("read event passes single events",
+                  test_read_event_passes_single_events);
 }

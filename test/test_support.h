@@ -29,6 +29,14 @@ int test_key(TuiDesktop *desktop, int key);
 
 /* Cells the code under test has written to the console so far. */
 extern int test_cells_written;
+
+/*
+ * Counts the writes that change a cell outside a rectangle (x2, y2 exclusive),
+ * from test_watch_outside() until test_watch_off().
+ */
+extern int test_watch_writes;
+void test_watch_outside(int x1, int y1, int x2, int y2);
+void test_watch_off(void);
 int test_key_event(TuiDesktop *desktop, int key, TuiEvent *event);
 int test_mouse_action(TuiDesktop *desktop,
                       int x,
@@ -36,6 +44,17 @@ int test_mouse_action(TuiDesktop *desktop,
                       int action,
                       TuiEvent *event);
 int test_mouse_down(TuiDesktop *desktop, int x, int y);
+
+/*
+ * The console's input queue, for tests of tui_read_event(). The fake console hands
+ * out what was pushed, in order, and has nothing (TUI_KEY_NONE) when it runs dry:
+ * it never waits. Like a real console, the details of a mouse event are only good
+ * until the next one is taken.
+ */
+void test_console_clear_input(void);
+void test_console_push_key(int key);
+void test_console_push_mouse(int x, int y, int action, int buttons);
+int test_console_input_left(void);
 
 #define CHECK(expression) \
     test_check((expression), #expression, __FILE__, __LINE__)

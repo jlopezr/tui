@@ -1,0 +1,38 @@
+# Veinte pulsaciones de flecha abajo en la pantalla Editor, cada una con tiempo de
+# sobra para terminar su repintado: mide cuanto cuesta UNA tecla, sin que la cola
+# ni la repeticion falseen el numero (make mini-profile MINI_PROFILE_SCRIPT=...).
+#
+# Para sacar el coste por tecla hay que restar el guion profile_editor_none.txt,
+# que llega al Editor y sale sin pulsar nada: (fotogramas - fotogramas_none) / 20.
+# Vease profile_drag.txt para las unidades (instrucciones, 75000 por fotograma) y
+# profile_editor_repeat.txt para como se llega al Editor con el raton.
+@0        keyboard connect
++0        mouse connect
+@4000000  mouse move -126 0
++1000     mouse move -126 0
++1000     mouse move 0 -120
++1000     mouse move 0 -120
++500000   mouse button left click
++3000000  mouse move 16 72
++500000   mouse button left click
++8000000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press DOWN
++1500000  key press ESC

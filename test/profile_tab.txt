@@ -1,0 +1,29 @@
+# Veinte TAB en la pantalla Controls de la demo, cada uno con tiempo de sobra para
+# terminar su repintado: mide cuanto cuesta pasar el foco de un control al
+# siguiente, que cruza campos, listas, areas de texto y ventanas (make mini-profile
+# MINI_PROFILE_SCRIPT=...).
+#
+# Coste por TAB: (fotogramas - fotogramas_none) / 20, con profile_tab_none.txt.
+# Vease profile_drag.txt para las unidades (instrucciones, 75000 por fotograma).
+@0        keyboard connect
+@4000000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press TAB
++1500000  key press ESC

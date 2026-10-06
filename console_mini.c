@@ -386,7 +386,8 @@ static int mini_mouse_event_ready(int x, int y, int action, int buttons)
 /*
  * Movimiento: se acumulan los puntos y solo hay evento para el TUI si cambia la
  * CELDA, que es la unica resolucion que el ve. Sin esto, cada evento del raton
- * (decenas por segundo) provocaria un redibujado entero.
+ * (decenas por segundo) provocaria un redibujado entero. Los movimientos que
+ * llegan seguidos los junta tui_read_event().
  */
 static int mini_input_move_event(unsigned int event)
 {
@@ -553,21 +554,26 @@ void tui_console_cell(int x, int y, int ch, int attr)
 }
 
 /*
- * Espera una tecla de la UART o de INPUT, la que llegue antes. Nunca bloquea en
- * una sola: con INPUT activo se sondean las dos.
+ * La siguiente tecla de la UART o de INPUT, la que este antes, o TUI_KEY_NONE si
+ * no hay ninguna. tui_console_key() espera sondeando las dos: nunca bloquea en una.
  */
+int tui_console_poll(void)
+{
+    if (mini_serial_available())
+        return mini_serial_key();
+    if (mini_input_enabled)
+        return mini_input_poll();
+    return TUI_KEY_NONE;
+}
+
 int tui_console_key(void)
 {
     int key;
 
     for (;;) {
-        if (mini_serial_available())
-            return mini_serial_key();
-        if (mini_input_enabled) {
-            key = mini_input_poll();
-            if (key != TUI_KEY_NONE)
-                return key;
-        }
+        key = tui_console_poll();
+        if (key != TUI_KEY_NONE)
+            return key;
     }
 }
 
@@ -595,6 +601,24 @@ int tui_console_printable(int key)
 {
     return TUI_ASCII_PRINTABLE(key) || (key >= 128 && key <= 255);
 }
+
+#ifdef TUI_PROFILE_EVENTS
+/* Para la medicion de demo.c: eventos esperando ahora (UART + INPUT) y el reloj. */
+int tui_console_pending(void)
+{
+    int count;
+
+    count = (int)(MINI_UART_STATUS & 0xff);
+    if (mini_input_enabled)
+        count += (int)(MINI_IN_STATUS & 0xffff);
+    return count;
+}
+
+unsigned int tui_console_frames(void)
+{
+    return MINI_VIDEO_FRAMES;
+}
+#endif
 
 void tui_console_cursor(int x, int y, int visible)
 {

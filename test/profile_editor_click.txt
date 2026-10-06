@@ -1,0 +1,58 @@
+# Veinte clics dentro del texto de la pantalla Editor, uno por celda, cada uno con
+# tiempo de sobra para terminar su repintado: mide cuanto cuesta UN clic que solo
+# mueve el cursor (make mini-profile MINI_PROFILE_SCRIPT=...).
+#
+# Coste por clic: (fotogramas - fotogramas_none) / 20, con profile_editor_none.txt.
+# Vease profile_editor_nav.txt para el resto. El puntero queda en la celda (10, 4)
+# tras elegir el menu; el primer movimiento lo lleva al texto y cada clic se hace una
+# celda mas a la derecha.
+@0        keyboard connect
++0        mouse connect
+@4000000  mouse move -126 0
++1000     mouse move -126 0
++1000     mouse move 0 -120
++1000     mouse move 0 -120
++500000   mouse button left click
++3000000  mouse move 16 72
++500000   mouse button left click
++8000000  mouse move 100 8
++1500000  mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  mouse move 8 0
++300000   mouse button left click
++1500000  key press ESC

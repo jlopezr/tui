@@ -1,0 +1,21 @@
+# Flecha abajo sostenida en la pantalla Editor, para medir cuantos eventos
+# esperan en cola en cada repintado (make mini-profile MINI_PROFILE_SCRIPT=...).
+# Vease profile_drag.txt para las unidades: instrucciones, 75000 por fotograma.
+#
+# Se llega al Editor con el raton, como board_screens.txt: el menu Demo esta en
+# la celda (8, 0) y su opcion Editor en la (10, 4). El puntero empieza en el
+# centro, (40, 15) = 320, 240 puntos, y un reporte lleva 8 bits: de ahi los pasos
+# de 126 y 120. La tecla se repite sola despues de 24 fotogramas, y luego cada 2
+# (console_mini.c), asi que 64 fotogramas son ~20 repeticiones.
+@0        keyboard connect
++0        mouse connect
+@4000000  mouse move -126 0
++1000     mouse move -126 0
++1000     mouse move 0 -120
++1000     mouse move 0 -120
++500000   mouse button left click
++3000000  mouse move 16 72
++500000   mouse button left click
++8000000  key down DOWN
++4800000  key up DOWN
++500000   key press ESC

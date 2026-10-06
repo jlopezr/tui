@@ -1,0 +1,5 @@
+# Arranca la demo y sale sin pulsar nada: es lo que hay que restar a profile_tab.txt
+# para quedarse solo con el coste de los TAB (make mini-profile
+# MINI_PROFILE_SCRIPT=...).
+@0        keyboard connect
+@4000000  key press ESC

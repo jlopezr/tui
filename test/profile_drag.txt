@@ -1,0 +1,33 @@
+# Arrastre de una ventana en la demo Controls, para medir cuantos eventos
+# esperan en cola en cada repintado (make mini-profile; TODO de z.tui).
+#
+# Los instantes son instrucciones, no milisegundos: a ~4,5 MIPS, 45000 son unos
+# 10 ms (el muestreo del raton del PC), y un fotograma son 75000 (60 Hz).
+#
+# El puntero empieza en el centro de la pantalla: celda (40, 15). El titulo de la
+# ventana Button esta en la fila 2 (la de ListBox es FIXED y no se arrastra), asi
+# que se sube 13 filas = 208 puntos, en dos pasos porque un reporte lleva 8 bits.
+# Despues se arrastra 15 celdas a la izquierda, por encima de la ventana Label.
+# Los movimientos con el boton pulsado son `mouse report`: `mouse move` lo suelta.
+@0        keyboard connect
++0        mouse connect
+@4000000  mouse move 0 -104
++1000     mouse move 0 -104
++200000   mouse report 0b1 0 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++45000    mouse report 0b1 -8 0
++500000   mouse report 0 0 0
++500000   key press ESC

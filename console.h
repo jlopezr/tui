@@ -117,6 +117,22 @@ int  tui_console_width(void);
 int  tui_console_height(void);
 
 void tui_console_cell(int x, int y, int ch, int attr);
+
+/*
+ * Input, in two forms over the same events:
+ *
+ *   tui_console_poll()  the next key (or TUI_KEY_MOUSE), or TUI_KEY_NONE if there
+ *                       is nothing right now. It never waits. What the TUI has no
+ *                       use for (a key release, a modifier on its own, a mouse
+ *                       move inside the same cell) is skipped inside, so NONE
+ *                       really means an empty queue and not "something ignored".
+ *   tui_console_key()   waits for the next one. It returns TUI_KEY_NONE only if the
+ *                       input is gone (closed, or an error).
+ *
+ * The mouse details of a TUI_KEY_MOUSE are only good until the next call to either
+ * (tui_console_mouse() reads them), so take them right away.
+ */
+int  tui_console_poll(void);
 int  tui_console_key(void);
 
 /*

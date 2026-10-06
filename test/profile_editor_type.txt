@@ -1,0 +1,38 @@
+# Teclear deprisa en la pantalla Editor, para medir cuantos eventos esperan en
+# cola en cada repintado (make mini-profile MINI_PROFILE_SCRIPT=...).
+# Vease profile_editor_repeat.txt para llegar al Editor y profile_drag.txt para
+# las unidades.
+#
+# Una tecla cada 250000 instrucciones: ~55 ms a ~4,5 MIPS, unas 18 por segundo, que
+# es mas deprisa de lo que teclea casi nadie. Si aqui la cola esta vacia, teclear
+# no acumula eventos.
+@0        keyboard connect
++0        mouse connect
+@4000000  mouse move -126 0
++1000     mouse move -126 0
++1000     mouse move 0 -120
++1000     mouse move 0 -120
++500000   mouse button left click
++3000000  mouse move 16 72
++500000   mouse button left click
++8000000  key press A
++250000   key press B
++250000   key press C
++250000   key press D
++250000   key press E
++250000   key press F
++250000   key press G
++250000   key press H
++250000   key press I
++250000   key press J
++250000   key press K
++250000   key press L
++250000   key press M
++250000   key press N
++250000   key press O
++250000   key press P
++250000   key press Q
++250000   key press R
++250000   key press S
++250000   key press T
++500000   key press ESC

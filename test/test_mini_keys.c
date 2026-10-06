@@ -785,6 +785,495 @@ static void test_pending_big_rectangle_absorbs_small_ones(void)
     CHECK(pending_equals_full(&s.desktop));
 }
 
+/*
+ * Rectangles that overlap are one rectangle (the overlap is not painted twice),
+ * unless their union is much bigger than the two together.
+ */
+static void test_pending_overlapping_rectangles_merge(void)
+{
+    Scene s;
+
+    scene_build(&s);
+    tui_draw(&s.desktop);
+
+    /* A window dragged two cells: old and new place are one rectangle. */
+    tui_invalidate_rect(&s.left.control, 0, 0, 10, 4);
+    tui_invalidate_rect(&s.left.control, 2, 0, 10, 4);
+    CHECK(s.desktop.dirty_count == 1);
+    CHECK(s.desktop.dirty[0][2] - s.desktop.dirty[0][0] == 12);
+    CHECK(s.desktop.dirty[0][3] - s.desktop.dirty[0][1] == 4);
+    CHECK(pending_equals_full(&s.desktop));
+
+    /* They only touch at a corner: the union (18 x 7) is bigger than both. */
+    tui_invalidate_rect(&s.left.control, 0, 0, 10, 4);
+    tui_invalidate_rect(&s.left.control, 8, 3, 10, 4);
+    CHECK(s.desktop.dirty_count == 2);
+    CHECK(pending_equals_full(&s.desktop));
+
+    /* Next to each other, without overlap: they stay apart. */
+    tui_invalidate_rect(&s.left.control, 0, 0, 5, 4);
+    tui_invalidate_rect(&s.left.control, 5, 0, 5, 4);
+    CHECK(s.desktop.dirty_count == 2);
+    CHECK(pending_equals_full(&s.desktop));
+
+    /* A chain: the third reaches both, and the three become one. */
+    tui_invalidate_rect(&s.left.control, 0, 0, 6, 4);
+    tui_invalidate_rect(&s.left.control, 12, 0, 6, 4);
+    CHECK(s.desktop.dirty_count == 2);
+    tui_invalidate_rect(&s.left.control, 4, 0, 10, 4);
+    CHECK(s.desktop.dirty_count == 1);
+    CHECK(pending_equals_full(&s.desktop));
+}
+
+/* Dragging a window across another: one rectangle per step, not two. */
+static void test_pending_window_drag_is_one_rectangle(void)
+{
+    Scene s;
+    TuiEvent event;
+    int i;
+
+    scene_build(&s);
+    tui_draw(&s.desktop);
+
+    /* Press the title of the left window and move it right, a cell at a time. */
+    test_mouse_down(&s.desktop, 5, 1);
+    CHECK(s.left.dragging);
+    tui_draw_pending(&s.desktop);
+
+    for (i = 1; i <= 6; ++i) {
+        test_mouse_action(&s.desktop, 5 + i, 1, TUI_MOUSE_MOVE, &event);
+        CHECK(!s.desktop.dirty_all);
+        CHECK(s.desktop.dirty_count == 1);
+        CHECK(pending_equals_full(&s.desktop));
+    }
+}
+
+/*
+ * Dragging a window against the edge of its parent: it can go half out, but not
+ * away; what is outside is clipped, so nothing outside the parent changes at any
+ * step (not even for an instant), each step looks like a full redraw, and the title
+ * can always be grabbed again.
+ */
+static void drag_out_of_parent(int docked, int dx, int dy, int steps)
+{
+    int cx1, cy1, cx2, cy2;
+    int left_edge;
+    int right_edge;
+    int hit_x;
+
+    TuiDesktop desktop;
+    TuiPanel screen;
+    TuiWindow left;
+    TuiWindow right;
+    TuiWindow parent;
+    TuiWindow child;
+    TuiWindow sibling;
+    TuiWindow below;
+    TuiEvent event;
+    Screen before;
+    Screen now;
+    Screen full;
+    int px1, py1, px2, py2;
+    int sx, sy;
+    int x, y;
+    int i;
+    int outside_untouched;
+
+    test_init_desktop(&desktop);
+    tui_window_init(&child, 2, 2, 12, 5, "Child");
+    tui_window_init(&sibling, 4, 5, 16, 6, "Sibling");
+
+    if (docked) {
+        /* As in the demo: a panel with a window on each side and one filling the rest. */
+        tui_panel_init(&screen, 0, 0, 1, 1);
+        screen.control.dock = TUI_DOCK_FILL;
+        tui_window_init(&left, 0, 0, 12, 5, "Left");
+        left.control.dock = TUI_DOCK_LEFT;
+        tui_window_init(&right, 0, 0, 15, 5, "Right");
+        right.control.dock = TUI_DOCK_RIGHT;
+        tui_window_init(&parent, 0, 0, 1, 1, "Workspace");
+        parent.control.dock = TUI_DOCK_FILL;
+        tui_add(&parent.control, &child.control);
+        tui_add(&parent.control, &sibling.control);
+        tui_add(&screen.control, &left.control);
+        tui_add(&screen.control, &right.control);
+        tui_add(&screen.control, &parent.control);
+        tui_add(&desktop.control, &screen.control);
+        sx = 12 + 1 + 2 + 3;
+        sy = 0 + 1 + 2;
+    } else {
+        tui_window_init(&below, 0, 0, 60, 20, "Below");
+        tui_window_init(&parent, 10, 3, 30, 12, "Parent");
+        tui_add(&desktop.control, &below.control);
+        tui_add(&desktop.control, &parent.control);
+        tui_add(&parent.control, &child.control);
+        tui_add(&parent.control, &sibling.control);
+        sx = 10 + 1 + 2 + 3;
+        sy = 3 + 1 + 2;
+    }
+
+    tui_draw(&desktop);
+    screen_save(&before);
+    tui_control_rect(&parent.control, &px1, &py1, &px2, &py2);
+
+    /* Press the title of the child. */
+    test_mouse_down(&desktop, sx, sy);
+    CHECK(child.dragging);
+    tui_draw_pending(&desktop);
+
+    for (i = 1; i <= steps; ++i) {
+        test_mouse_action(&desktop, sx + i * dx, sy + i * dy, TUI_MOUSE_MOVE, &event);
+        CHECK(!desktop.dirty_all);
+        test_watch_outside(px1, py1, px2, py2);
+        tui_draw_pending(&desktop);
+        test_watch_off();
+        screen_save(&now);
+
+        /* Not even for an instant: what is outside the parent is not touched. */
+        CHECK(test_watch_writes == 0);
+
+        outside_untouched = 1;
+        for (y = 0; y < TEST_HEIGHT; ++y)
+            for (x = 0; x < TEST_WIDTH; ++x)
+                if ((x < px1 || x >= px2 || y < py1 || y >= py2) &&
+                    (now.chars[y][x] != before.chars[y][x] ||
+                     now.attrs[y][x] != before.attrs[y][x]))
+                    outside_untouched = 0;
+        CHECK(outside_untouched);
+
+        tui_draw(&desktop);
+        screen_save(&full);
+        CHECK(screens_equal(&now, &full));
+
+        /* Four cells of the title inside the parent, on a row it shows. */
+        tui_control_rect(&child.control, &cx1, &cy1, &cx2, &cy2);
+        left_edge = cx1 > px1 + 1 ? cx1 : px1 + 1;
+        right_edge = cx2 < px2 - 1 ? cx2 : px2 - 1;
+        CHECK(cy1 > py1 && cy1 < py2 - 1);
+        CHECK(right_edge - left_edge >= 4);
+
+        /* And a click there finds the window, which is on top. */
+        hit_x = left_edge + 1;
+        CHECK(tui_hit_test(&desktop.control, hit_x, cy1) == &child.control);
+    }
+}
+
+static void test_pending_window_drag_against_the_parent(void)
+{
+    drag_out_of_parent(0, 1, 0, 30);    /* the right edge */
+    drag_out_of_parent(0, -1, 0, 20);   /* the left edge */
+    drag_out_of_parent(0, 0, 1, 14);    /* the bottom */
+    drag_out_of_parent(0, 0, -1, 6);    /* the top */
+
+    drag_out_of_parent(1, 1, 0, 60);    /* towards the Right window */
+    drag_out_of_parent(1, -1, 0, 30);   /* towards the Left window */
+    drag_out_of_parent(1, 0, 1, 25);    /* down, towards the status line */
+    drag_out_of_parent(1, 0, -1, 4);    /* up */
+}
+
+/*
+ * The editor tells the desktop what an event changed, not its whole rectangle:
+ * moving the cursor writes a couple of cells, typing rewrites a row, Enter the rows
+ * below it. Each step must still look exactly like a full redraw.
+ */
+typedef struct EditorScene {
+    TuiDesktop desktop;
+    TuiWindow window;
+    TuiLinearTextModel model;
+    TuiEditor editor;
+    char buffer[2048];
+} EditorScene;
+
+/* A window at (x, y) holding an editor of w x h cells (and a border around it). */
+static void editor_scene_build(EditorScene *s, int x, int y, int w, int h,
+                               int lines, int length)
+{
+    char text[128];
+    int i;
+    int j;
+
+    test_init_desktop(&s->desktop);
+    s->buffer[0] = '\0';
+    tui_linear_text_model_init(&s->model, s->buffer, (int)sizeof(s->buffer));
+
+    for (i = 0; i < lines; ++i) {
+        for (j = 0; j < length + (i % 3) * 9 && j < 100; ++j)
+            text[j] = (char)('a' + (i + j) % 26);
+
+        text[j++] = '\n';
+        tui_text_model_insert(&s->model.model,
+                              tui_text_model_length(&s->model.model), text, j);
+    }
+
+    tui_window_init(&s->window, x, y, w + 2, h + 2, "Editor");
+    tui_editor_init(&s->editor, 0, 0, w, h, &s->model.model);
+    tui_add(&s->window.control, &s->editor.control);
+    tui_add(&s->desktop.control, &s->window.control);
+    tui_desktop_set_focus(&s->desktop, &s->editor.control);
+    tui_draw(&s->desktop);
+}
+
+/* The cursor the console was left with by the last paint_and_check(). */
+static int checked_cursor_visible;
+static int checked_cursor_x;
+static int checked_cursor_y;
+
+/* Paints what is pending, checks it against a full redraw, returns the cells it wrote. */
+static int paint_and_check(TuiDesktop *desktop)
+{
+    Screen now;
+    Screen full;
+    int before;
+    int written;
+
+    before = test_cells_written;
+    tui_draw_pending(desktop);
+    written = test_cells_written - before;
+    checked_cursor_visible = test_cursor_visible;
+    checked_cursor_x = test_cursor_x;
+    checked_cursor_y = test_cursor_y;
+    screen_save(&now);
+
+    tui_draw(desktop);
+    screen_save(&full);
+    CHECK(screens_equal(&now, &full));
+
+    return written;
+}
+
+static int editor_paint_and_check(EditorScene *s)
+{
+    return paint_and_check(&s->desktop);
+}
+
+static void test_pending_editor_writes_only_what_changed(void)
+{
+    static EditorScene s;
+    int written;
+    int i;
+
+    /* The editor of the demo's Editor screen: 78 x 23 inside an 80 x 25 window. */
+    editor_scene_build(&s, 0, 0, 78, 23, 12, 40);
+
+    /* The cursor moves: the cell it is now on. */
+    test_key(&s.desktop, TUI_KEY_DOWN);
+    CHECK(!s.desktop.dirty_all);
+    written = editor_paint_and_check(&s);
+    CHECK(written >= 1 && written <= 4);
+
+    test_key(&s.desktop, TUI_KEY_RIGHT);
+    written = editor_paint_and_check(&s);
+    CHECK(written >= 1 && written <= 4);
+
+    /* A click in the text: the same. */
+    test_mouse_down(&s.desktop, 1 + 12, 1 + 6);
+    CHECK(!s.desktop.dirty_all);
+    written = editor_paint_and_check(&s);
+    CHECK(written >= 1 && written <= 4);
+
+    /* A key that changes nothing (Up on the first line): nothing is repainted. */
+    for (i = 0; i < 12; ++i)
+        test_key(&s.desktop, TUI_KEY_UP);
+    test_key(&s.desktop, TUI_KEY_HOME);
+    editor_paint_and_check(&s);
+
+    test_key(&s.desktop, TUI_KEY_UP);
+    CHECK(!s.desktop.dirty_all);
+    written = editor_paint_and_check(&s);
+    CHECK(written == 0);
+
+    /*
+     * A letter in the middle of a line: that row, from the cursor on. Each cell is
+     * written twice at most (the background, then the character).
+     */
+    test_key(&s.desktop, TUI_KEY_DOWN);
+    test_key(&s.desktop, TUI_KEY_RIGHT);
+    editor_paint_and_check(&s);
+    test_key(&s.desktop, 'z');
+    CHECK(!s.desktop.dirty_all);
+    written = editor_paint_and_check(&s);
+    CHECK(written >= 2 && written <= 2 * 78);
+
+    test_key(&s.desktop, TUI_KEY_BACKSPACE);
+    written = editor_paint_and_check(&s);
+    CHECK(written >= 2 && written <= 2 * 78);
+
+    /* Enter: the rows from the cursor's down, not the rows above. */
+    test_key(&s.desktop, TUI_KEY_ENTER);
+    CHECK(!s.desktop.dirty_all);
+    written = editor_paint_and_check(&s);
+    CHECK(written >= 78 && written < 78 * 23);
+}
+
+/*
+ * The focus moving to and from a big control draws what changes with it: for an
+ * editor, the cell the cursor is on, and the cursor itself comes and goes.
+ */
+static void test_pending_focus_draws_only_what_changes(void)
+{
+    static EditorScene s;
+    static TuiButton button;
+    int written;
+    int i;
+
+    /* An editor of 78 x 21 and a button below it, both in the same window. */
+    editor_scene_build(&s, 0, 0, 78, 21, 12, 40);
+    s.window.control.height = 25;
+    tui_button_init(&button, 2, 22, 12, "OK", 77);
+    tui_add(&s.window.control, &button.control);
+    tui_draw(&s.desktop);
+
+    for (i = 0; i < 3; ++i)
+        test_key(&s.desktop, TUI_KEY_DOWN);
+    for (i = 0; i < 5; ++i)
+        test_key(&s.desktop, TUI_KEY_RIGHT);
+    editor_paint_and_check(&s);
+    CHECK(checked_cursor_visible);
+    CHECK(checked_cursor_x == 1 + 5 && checked_cursor_y == 1 + 3);
+
+    /* Away from the editor: its cursor cell, and the button. Not the whole editor. */
+    tui_desktop_set_focus(&s.desktop, &button.control);
+    CHECK(!s.desktop.dirty_all);
+    written = editor_paint_and_check(&s);
+    CHECK(written >= 1 && written <= 60);
+    CHECK(!checked_cursor_visible);
+
+    /* Back to it: the cursor is where it was. */
+    tui_desktop_set_focus(&s.desktop, &s.editor.control);
+    CHECK(!s.desktop.dirty_all);
+    written = editor_paint_and_check(&s);
+    CHECK(written >= 1 && written <= 60);
+    CHECK(checked_cursor_visible);
+    CHECK(checked_cursor_x == 1 + 5 && checked_cursor_y == 1 + 3);
+
+    /*
+     * To nothing at all: the cursor cell, and the window's frame, which is no longer
+     * the active one: the ring of cells around an 80 x 25 window (206), more than
+     * once over, as what lies under it is drawn first. Far from the 1800 of the
+     * editor, or the 2000 of the whole window.
+     */
+    tui_desktop_set_focus(&s.desktop, 0);
+    written = editor_paint_and_check(&s);
+    CHECK(written <= 500);
+    CHECK(!checked_cursor_visible);
+
+    /*
+     * A read-only editor shows no cursor, so nothing of it changes with the focus:
+     * what is drawn is the button, in the same window (no frame either).
+     */
+    tui_desktop_set_focus(&s.desktop, &button.control);
+    editor_paint_and_check(&s);
+    tui_editor_set_readonly(&s.editor, 1);
+    editor_paint_and_check(&s);
+    tui_desktop_set_focus(&s.desktop, &s.editor.control);
+    CHECK(!s.desktop.dirty_all);
+    written = editor_paint_and_check(&s);
+    CHECK(written <= 40);
+    CHECK(!checked_cursor_visible);
+}
+
+/* A list drawn differently with the focus: only its selected row changes. */
+static void test_pending_listbox_focus_draws_one_row(void)
+{
+    static const char *items[] = {
+        "Apple", "Banana", "Orange", "Peach", "Pear", "Cherry",
+        "Lemon", "Mango", "Plum", "Fig", "Lime", "Date"
+    };
+    TuiDesktop desktop;
+    TuiWindow window;
+    TuiListBox list;
+    TuiButton button;
+    int written;
+
+    test_init_desktop(&desktop);
+    tui_window_init(&window, 2, 2, 40, 14, "List");
+    tui_listbox_init(&list, 0, 0, 20, 8, items, 12);
+    tui_button_init(&button, 2, 10, 10, "OK", 78);
+    tui_add(&window.control, &list.control);
+    tui_add(&window.control, &button.control);
+    tui_add(&desktop.control, &window.control);
+    tui_listbox_set_selected(&list, 5);
+    tui_desktop_set_focus(&desktop, &button.control);
+    tui_draw(&desktop);
+
+    /* The selected row, and the button: not the eight rows. */
+    tui_desktop_set_focus(&desktop, &list.control);
+    CHECK(!desktop.dirty_all);
+    written = paint_and_check(&desktop);
+    CHECK(written >= 1 && written <= 2 * 20 + 40);
+
+    tui_desktop_set_focus(&desktop, &button.control);
+    written = paint_and_check(&desktop);
+    CHECK(written >= 1 && written <= 2 * 20 + 40);
+
+    /* A selection that has scrolled out of view: nothing in the list to repaint. */
+    tui_listbox_set_selected(&list, 11);
+    paint_and_check(&desktop);
+    tui_desktop_set_focus(&desktop, &list.control);
+    CHECK(!desktop.dirty_all);
+    paint_and_check(&desktop);
+}
+
+/* A small editor with both scroll bars and a long text, hit with random events. */
+static void test_pending_editor_random_events(void)
+{
+    static EditorScene s;
+    static TuiButton button;
+    unsigned int seed;
+    int step;
+    int r;
+    int key;
+
+    editor_scene_build(&s, 2, 2, 30, 8, 14, 22);
+    seed = 12345u;
+
+    /* A button under the editor to move the focus to, and back from. */
+    s.window.control.height = 13;
+    tui_button_init(&button, 2, 10, 10, "OK", 77);
+    tui_add(&s.window.control, &button.control);
+    tui_draw(&s.desktop);
+
+    for (step = 0; step < 1500; ++step) {
+        seed = seed * 1103515245u + 12345u;
+        r = (int)((seed >> 16) & 0x7fff);
+
+        if (r % 23 == 0)
+            tui_desktop_set_focus(&s.desktop,
+                                  tui_desktop_get_focus(&s.desktop) == &button.control
+                                      ? &s.editor.control : &button.control);
+
+        switch (r % 20) {
+        case 8:  key = ' '; break;
+        case 9:  key = TUI_KEY_ENTER; break;
+        case 10: key = TUI_KEY_BACKSPACE; break;
+        case 11: key = TUI_KEY_DELETE; break;
+        case 12: key = TUI_KEY_LEFT; break;
+        case 13: key = TUI_KEY_RIGHT; break;
+        case 14: key = TUI_KEY_UP; break;
+        case 15: key = TUI_KEY_DOWN; break;
+        case 16: key = TUI_KEY_HOME; break;
+        case 17: key = TUI_KEY_END; break;
+        case 18: key = (r / 20) % 2 ? TUI_KEY_PAGEUP : TUI_KEY_PAGEDOWN; break;
+        case 19: key = -1; break;
+        default: key = 'a' + (r / 20) % 26; break;
+        }
+
+        if (key < 0) {
+            /* A click anywhere on the editor, scroll bar strips included. */
+            test_mouse_down(&s.desktop,
+                            3 + (r / 20) % 31,
+                            3 + (r / 640) % 9);
+        } else {
+            test_key(&s.desktop, key);
+        }
+
+        editor_paint_and_check(&s);
+    }
+
+    /* Whatever happened, it was all editing and moving, and the screen agrees. */
+    CHECK(tui_text_model_length(&s.model.model) > 0);
+}
+
 /* A panel is a container with no frame: it groups, docks, and draws nothing. */
 static void test_panel_groups_without_a_frame(void)
 {
@@ -1280,6 +1769,20 @@ void test_mini_keys_suite(void)
                   test_pending_many_frames_overflow_to_rectangles);
     test_run_case("pending redraw: a big rectangle absorbs small ones",
                   test_pending_big_rectangle_absorbs_small_ones);
+    test_run_case("pending redraw: overlapping rectangles merge",
+                  test_pending_overlapping_rectangles_merge);
+    test_run_case("pending redraw: a window drag is one rectangle",
+                  test_pending_window_drag_is_one_rectangle);
+    test_run_case("pending redraw: a window dragged against its parent",
+                  test_pending_window_drag_against_the_parent);
+    test_run_case("pending redraw: the editor writes only what changed",
+                  test_pending_editor_writes_only_what_changed);
+    test_run_case("pending redraw: focus draws only what changes",
+                  test_pending_focus_draws_only_what_changes);
+    test_run_case("pending redraw: list focus draws one row",
+                  test_pending_listbox_focus_draws_one_row);
+    test_run_case("pending redraw: the editor under random events",
+                  test_pending_editor_random_events);
     test_run_case("pending redraw: combo opened from another window",
                   test_pending_combo_from_another_window);
     test_run_case("panel groups children without a frame",

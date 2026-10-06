@@ -753,11 +753,113 @@ static TuiStatusItem status_items[] = {
     { "Run",  TUI_KEY_F5, CMD_RUN   }
 };
 
+#ifdef TUI_PROFILE_EVENTS
+/*
+ * Medicion (TODO, punto 9): cuantos eventos esperan en cola cuando empieza cada
+ * repintado, y cuanto dura. Solo con TUI_PROFILE_EVENTS y la consola mini; al
+ * salir escribe el resultado en las primeras filas de la pantalla.
+ */
+int tui_console_pending(void);
+unsigned int tui_console_frames(void);
+
+static int prof_paints;             /* repintados con algo que pintar */
+static int prof_events;             /* eventos despachados */
+static int prof_busy;               /* repintados con la cola no vacia al empezar */
+static int prof_queued;             /* eventos en cola, sumados sobre esos repintados */
+static int prof_max;
+static int prof_hist[8];            /* repintados segun la cola al empezar (7 = 7 o mas) */
+static unsigned int prof_frames;    /* fotogramas gastados repintando */
+static unsigned int prof_dispatch;  /* fotogramas gastados manejando eventos */
+static int prof_down_x;             /* celda del ultimo DOWN del raton */
+static int prof_down_y;
+
+static void prof_paint(TuiDesktop *desktop)
+{
+    int pending;
+    unsigned int start;
+
+    if (!desktop->dirty_all && desktop->dirty_count == 0 && desktop->frame_count == 0)
+        return;
+
+    pending = tui_console_pending();
+    start = tui_console_frames();
+    tui_draw_pending(desktop);
+    prof_frames += tui_console_frames() - start;
+
+    ++prof_paints;
+    ++prof_hist[pending > 7 ? 7 : pending];
+    if (pending > 0) {
+        ++prof_busy;
+        prof_queued += pending;
+    }
+    if (pending > prof_max)
+        prof_max = pending;
+}
+
+static int prof_text(int x, int y, const char *text)
+{
+    while (*text != '\0')
+        tui_console_cell(x++, y, *text++, 0x07);
+    return x;
+}
+
+static int prof_number(int x, int y, int value)
+{
+    int digits[12];
+    int count;
+
+    count = 0;
+    do {
+        digits[count++] = '0' + value % 10;
+        value /= 10;
+    } while (value > 0);
+    while (count > 0)
+        tui_console_cell(x++, y, digits[--count], 0x07);
+    return x + 1;
+}
+
+static void prof_report(void)
+{
+    int i;
+    int x;
+
+    for (x = 0; x < 80; ++x) {
+        tui_console_cell(x, 0, ' ', 0x07);
+        tui_console_cell(x, 1, ' ', 0x07);
+    }
+
+    x = prof_text(0, 0, "paints");
+    x = prof_number(x + 1, 0, prof_paints);
+    x = prof_text(x, 0, "events");
+    x = prof_number(x + 1, 0, prof_events);
+    x = prof_text(x, 0, "busy");
+    x = prof_number(x + 1, 0, prof_busy);
+    x = prof_text(x, 0, "queued");
+    x = prof_number(x + 1, 0, prof_queued);
+    x = prof_text(x, 0, "max");
+    x = prof_number(x + 1, 0, prof_max);
+    x = prof_text(x, 0, "frames");
+    x = prof_number(x + 1, 0, (int)prof_frames);
+    x = prof_text(x, 0, "dispatch");
+    prof_number(x + 1, 0, (int)prof_dispatch);
+
+    x = prof_text(0, 1, "hist");
+    for (i = 0; i < 8; ++i)
+        x = prof_number(x + 1, 1, prof_hist[i]);
+    x = prof_text(x + 1, 1, "down");
+    x = prof_number(x + 1, 1, prof_down_x);
+    prof_number(x, 1, prof_down_y);
+}
+#endif
+
 int main(void)
 {
     /* Static: ~15 KB, bigger than the 8 KB stack of the MiniCPU start-up code. */
     static App app;
     TuiEvent event;
+#ifdef TUI_PROFILE_EVENTS
+    unsigned int prof_start;
+#endif
 
     if (!tui_init())
         return 1;
@@ -791,8 +893,19 @@ int main(void)
          * whole screen costs over a million instructions on the MiniCPU, a
          * third of a second, which is far too slow to do after every key.
          */
+#ifdef TUI_PROFILE_EVENTS
+        prof_paint(&app.desktop);
+#else
         tui_draw_pending(&app.desktop);
+#endif
         tui_read_event(&event);
+#ifdef TUI_PROFILE_EVENTS
+        ++prof_events;
+        if (event.type == TUI_EV_MOUSE && event.mouse_action == TUI_MOUSE_DOWN) {
+            prof_down_x = event.mouse_x;
+            prof_down_y = event.mouse_y;
+        }
+#endif
 
         if (event.type == TUI_EV_KEY &&
             event.key == TUI_KEY_ESCAPE &&
@@ -800,11 +913,20 @@ int main(void)
             app.running = 0;
         } else {
             note_control_event(&app, &event);
+#ifdef TUI_PROFILE_EVENTS
+            prof_start = tui_console_frames();
+#endif
             tui_dispatch(&app.desktop, &event);
+#ifdef TUI_PROFILE_EVENTS
+            prof_dispatch += tui_console_frames() - prof_start;
+#endif
         }
 
     }
 
+#ifdef TUI_PROFILE_EVENTS
+    prof_report();
+#endif
     tui_shutdown();
 
     return 0;

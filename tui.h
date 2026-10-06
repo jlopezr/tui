@@ -170,6 +170,16 @@ struct TuiClass {
      * table that stops at the members above gets.
      */
     int flags;
+
+    /*
+     * The focus moved onto or off the control (tui_control_has_focus() says which):
+     * invalidate what looks different now. Optional: 0 invalidates the whole control,
+     * which is right for anything that looks different with the focus and small. A
+     * big control that barely changes (an editor shows only its cursor) says so here,
+     * and saves repainting itself every time TAB passes through. If nothing needs
+     * drawing, call tui_event_done() so that the change still counts as reported.
+     */
+    void (*focus_changed)(TuiControl *control);
 };
 
 /*
@@ -558,6 +568,10 @@ void tui_draw_cursor(TuiDraw *draw, int x, int y);
 int tui_dispatch(TuiDesktop *desktop,
                  TuiEvent *event);
 
+/*
+ * Waits for the next event. Mouse moves that arrive one after another come out as
+ * a single move, at the last place; any other event is passed on as it comes.
+ */
 int tui_read_event(TuiEvent *event);
 
 

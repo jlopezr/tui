@@ -430,22 +430,45 @@ void tui_console_cell(int x, int y, int ch, int attr)
     tui_frame_dirty = 1;
 }
 
-int tui_console_key(void)
+int tui_console_poll(void)
 {
     INPUT_RECORD record;
+    DWORD count;
     DWORD read;
+    int key;
 
     for (;;) {
+        if (!GetNumberOfConsoleInputEvents(tui_input, &count) || count == 0)
+            return TUI_KEY_NONE;
+
         if (!ReadConsoleInputW(tui_input, &record, 1, &read) || read == 0)
             return TUI_KEY_NONE;
 
+        key = TUI_KEY_NONE;
+
         if (record.EventType == KEY_EVENT &&
             record.Event.KeyEvent.bKeyDown)
-            return tui_win32_key(&record.Event.KeyEvent);
+            key = tui_win32_key(&record.Event.KeyEvent);
+        else if (record.EventType == MOUSE_EVENT &&
+                 tui_win32_mouse_event(&record.Event.MouseEvent))
+            key = TUI_KEY_MOUSE;
 
-        if (record.EventType == MOUSE_EVENT &&
-            tui_win32_mouse_event(&record.Event.MouseEvent))
-            return TUI_KEY_MOUSE;
+        if (key != TUI_KEY_NONE)
+            return key;
+    }
+}
+
+int tui_console_key(void)
+{
+    int key;
+
+    for (;;) {
+        key = tui_console_poll();
+        if (key != TUI_KEY_NONE)
+            return key;
+
+        if (WaitForSingleObject(tui_input, INFINITE) != WAIT_OBJECT_0)
+            return TUI_KEY_NONE;
     }
 }
 

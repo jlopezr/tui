@@ -2,12 +2,14 @@
 
 static void listbox_draw(TuiControl *control, TuiDraw *draw);
 static int listbox_event(TuiControl *control, TuiEvent *event);
+static void listbox_focus_changed(TuiControl *control);
 
 static const TuiClass listbox_class = {
     listbox_draw,
     listbox_event,
     0,
-    TUI_CLASS_OPAQUE
+    TUI_CLASS_OPAQUE,
+    listbox_focus_changed
 };
 
 /*
@@ -376,6 +378,24 @@ static void listbox_draw(TuiControl *control, TuiDraw *draw)
                      attr);
         }
     }
+}
+
+/*
+ * The focus moved onto or off the list: the selected row is the only one drawn
+ * differently with it (see listbox_draw), so that row is all there is to draw.
+ */
+static void listbox_focus_changed(TuiControl *control)
+{
+    TuiListBox *list;
+    int row;
+
+    list = (TuiListBox *)control;
+    row = list->selected - list->offset;
+
+    if (list->selected >= 0 && row >= 0 && row < control->height)
+        tui_invalidate_rect(control, 0, row, listbox_content_width(list), 1);
+    else
+        tui_event_done(control);
 }
 
 static int listbox_handle(TuiControl *control, TuiEvent *event);

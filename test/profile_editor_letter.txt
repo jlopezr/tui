@@ -1,0 +1,36 @@
+# Veinte letras tecleadas en la pantalla Editor, cada una con tiempo de sobra para
+# terminar su repintado: mide cuanto cuesta UNA letra (make mini-profile
+# MINI_PROFILE_SCRIPT=...). Las letras se insertan al principio del texto de ejemplo.
+#
+# Coste por letra: (fotogramas - fotogramas_none) / 20, con profile_editor_none.txt.
+# Vease profile_editor_nav.txt, que es igual con la flecha abajo.
+@0        keyboard connect
++0        mouse connect
+@4000000  mouse move -126 0
++1000     mouse move -126 0
++1000     mouse move 0 -120
++1000     mouse move 0 -120
++500000   mouse button left click
++3000000  mouse move 16 72
++500000   mouse button left click
++8000000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press X
++1500000  key press ESC

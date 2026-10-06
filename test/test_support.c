@@ -60,6 +60,28 @@ int tui_console_height(void)
 
 int test_cells_written;
 
+static int test_watch_active;
+static int test_watch_x1;
+static int test_watch_y1;
+static int test_watch_x2;
+static int test_watch_y2;
+int test_watch_writes;
+
+void test_watch_outside(int x1, int y1, int x2, int y2)
+{
+    test_watch_active = 1;
+    test_watch_x1 = x1;
+    test_watch_y1 = y1;
+    test_watch_x2 = x2;
+    test_watch_y2 = y2;
+    test_watch_writes = 0;
+}
+
+void test_watch_off(void)
+{
+    test_watch_active = 0;
+}
+
 void tui_console_cell(int x, int y, int ch, int attr)
 {
     if (x < 0 || x >= TEST_WIDTH ||
@@ -68,21 +90,96 @@ void tui_console_cell(int x, int y, int ch, int attr)
 
     ++test_cells_written;
 
+    /*
+     * A write that changes the cell is something the screen shows, even if a later
+     * one puts the old value back (the MiniCPU console writes straight to the text
+     * RAM, and skips only the writes that change nothing).
+     */
+    if (test_watch_active &&
+        (x < test_watch_x1 || x >= test_watch_x2 ||
+         y < test_watch_y1 || y >= test_watch_y2) &&
+        (test_cell_chars[y][x] != ch || test_cell_attrs[y][x] != attr))
+        ++test_watch_writes;
+
     test_cell_chars[y][x] = ch;
     test_cell_attrs[y][x] = attr;
 }
 
+#define TEST_INPUT_MAX 64
+
+typedef struct TestInput {
+    int key;
+    int x;
+    int y;
+    int action;
+    int buttons;
+} TestInput;
+
+static TestInput test_input[TEST_INPUT_MAX];
+static int test_input_head;
+static int test_input_tail;
+static int test_mouse_x;
+static int test_mouse_y;
+static int test_mouse_action_now;
+static int test_mouse_buttons;
+
+void test_console_clear_input(void)
+{
+    test_input_head = 0;
+    test_input_tail = 0;
+}
+
+void test_console_push_key(int key)
+{
+    test_input[test_input_tail].key = key;
+    ++test_input_tail;
+}
+
+void test_console_push_mouse(int x, int y, int action, int buttons)
+{
+    test_input[test_input_tail].key = TUI_KEY_MOUSE;
+    test_input[test_input_tail].x = x;
+    test_input[test_input_tail].y = y;
+    test_input[test_input_tail].action = action;
+    test_input[test_input_tail].buttons = buttons;
+    ++test_input_tail;
+}
+
+int test_console_input_left(void)
+{
+    return test_input_tail - test_input_head;
+}
+
+int tui_console_poll(void)
+{
+    TestInput *input;
+
+    if (test_input_head == test_input_tail)
+        return TUI_KEY_NONE;
+
+    input = &test_input[test_input_head++];
+
+    if (input->key == TUI_KEY_MOUSE) {
+        test_mouse_x = input->x;
+        test_mouse_y = input->y;
+        test_mouse_action_now = input->action;
+        test_mouse_buttons = input->buttons;
+    }
+
+    return input->key;
+}
+
 int tui_console_key(void)
 {
-    return TUI_KEY_NONE;
+    return tui_console_poll();
 }
 
 void tui_console_mouse(int *x, int *y, int *action, int *buttons)
 {
-    *x = 0;
-    *y = 0;
-    *action = 0;
-    *buttons = 0;
+    *x = test_mouse_x;
+    *y = test_mouse_y;
+    *action = test_mouse_action_now;
+    *buttons = test_mouse_buttons;
 }
 
 int test_console_8bit = 0;
