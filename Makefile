@@ -147,6 +147,19 @@ mini-bench: test/mini_bench.c console_mini.c console.h
 	printf '# none\n' > _build/noscript.txt
 	cpusim _build/mini_bench.bin --serial-input _build/empty.bin --input-script _build/noscript.txt --console-output _build/bench.txt --frame-instructions 75000 --run-limit $(MINI_SIM_MAX) | grep HALT
 
+# Medida en la placa de cuatro formas de escribir tramos (test/mini_perf.c): la
+# comparacion con mini_shadow, dos tablas como los PC, una tabla leyendo la RAM de
+# texto, y sin tabla. Usa los contadores de CPU PERFORMANCE, asi que solo vale en la
+# placa; el resultado se lee de la pantalla.
+#
+#   make mini-perf          compila, sube y arranca; luego monitor.py screen
+mini-perf:
+	mkdir -p _build
+	mini-lcc test/mini_perf.c -o _build/mini_perf.s
+	mini-asm _build/mini_perf.s -o _build/mini_perf.bin
+	run-board --prototype $(MINI_PROTOTYPE) --program _build/mini_perf.bin $(MINI_PORT)
+	@echo "Espera unos segundos y mira: monitor.py screen"
+
 clean:
 	rm -f $(TARGET) $(UNITY_TARGET) $(WIN32_TARGET) $(TEST_TARGET) $(COVERAGE_TARGET) \
 		$(COVERAGE_DIR)/test_controls.profraw \
@@ -157,4 +170,4 @@ clean:
 		_build/mini_bench_main.c _build/mini_bench.s _build/mini_bench.bin \
 		_build/bench.txt _build/noscript.txt
 
-.PHONY: all clean test coverage unity win32 mini mini-sim mini-run mini-profile mini-runcheck mini-bench
+.PHONY: all clean test coverage unity win32 mini mini-sim mini-run mini-profile mini-runcheck mini-bench mini-perf
