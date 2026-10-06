@@ -2,12 +2,14 @@
 
 static void textarea_draw(TuiControl *control, TuiDraw *draw);
 static int textarea_event(TuiControl *control, TuiEvent *event);
+static void textarea_focus_changed(TuiControl *control);
 
 static const TuiClass textarea_class = {
     textarea_draw,
     textarea_event,
     0,
-    TUI_CLASS_OPAQUE
+    TUI_CLASS_OPAQUE,
+    textarea_focus_changed
 };
 
 /*
@@ -579,6 +581,41 @@ static int textarea_mouse(TuiTextArea *area, TuiEvent *event)
 }
 
 static int textarea_handle(TuiControl *control, TuiEvent *event);
+
+/*
+ * The focus moved onto or off the text area. The only thing that looks different is
+ * the cursor, which textarea_draw() asks for while it has the focus, so the cell it
+ * is on is all there is to draw. Nothing here changes the viewport (the control may
+ * not have been laid out yet): if the cursor is not in view, all of it is drawn.
+ */
+static void textarea_focus_changed(TuiControl *control)
+{
+    TuiTextArea *area;
+    int show_v;
+    int show_h;
+    int cw;
+    int ch;
+    int cx;
+    int cy;
+
+    area = (TuiTextArea *)control;
+
+    if (area->text == 0 || area->readonly) {
+        /* No cursor to show or hide. */
+        tui_event_done(control);
+        return;
+    }
+
+    textarea_layout(area, &show_v, &show_h, &cw, &ch);
+    textarea_cursor_xy(area, &cx, &cy);
+    cx -= area->left_col;
+    cy -= area->top_line;
+
+    if (cx >= 0 && cx < cw && cy >= 0 && cy < ch)
+        tui_invalidate_rect(control, cx, cy, 1, 1);
+    else
+        tui_invalidate(control);
+}
 
 /* Whatever the control handled may have changed what it shows. */
 static int textarea_event(TuiControl *control, TuiEvent *event)

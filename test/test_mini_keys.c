@@ -1214,6 +1214,51 @@ static void test_pending_listbox_focus_draws_one_row(void)
     paint_and_check(&desktop);
 }
 
+/*
+ * The focus moving between two windows with a TextArea each (the demo's "TextArea"
+ * and "Scrolling"): the two frames, which show which window is active, and the
+ * cursor cell of each text area. Not the text areas themselves.
+ */
+static void test_pending_textarea_focus_draws_only_the_cursor(void)
+{
+    static TuiDesktop desktop;
+    static TuiWindow w1, w2;
+    static TuiTextArea a1, a2;
+    static char b1[64], b2[64];
+    int written;
+    int i;
+
+    test_init_desktop(&desktop);
+    tui_window_init(&w1, 0, 16, 25, 5, "TextArea");
+    tui_window_init(&w2, 26, 16, 25, 5, "Scrolling");
+    strcpy(b1, "Some text\nsecond line\nthird\nfourth");
+    strcpy(b2, "Other text\nline two\nline three\nfour");
+    tui_textarea_init(&a1, 0, 0, 23, 3, b1, 64);
+    tui_textarea_init(&a2, 0, 0, 23, 3, b2, 64);
+    tui_add(&w1.control, &a1.control);
+    tui_add(&w2.control, &a2.control);
+    tui_add(&desktop.control, &w1.control);
+    tui_add(&desktop.control, &w2.control);
+    tui_desktop_set_focus(&desktop, &a1.control);
+    tui_draw(&desktop);
+
+    for (i = 0; i < 4; ++i) {
+        tui_desktop_set_focus(&desktop, i % 2 == 0 ? &a2.control : &a1.control);
+        CHECK(!desktop.dirty_all);
+        written = paint_and_check(&desktop);
+        /* Two frames of 56 cells, written twice (background, then frame). */
+        CHECK(written >= 100 && written <= 2 * 122 + 20);
+        CHECK(checked_cursor_visible);
+    }
+
+    /* A read-only one has no cursor: nothing of it is drawn. */
+    tui_textarea_set_readonly(&a2, 1);
+    paint_and_check(&desktop);
+    tui_desktop_set_focus(&desktop, &a2.control);
+    paint_and_check(&desktop);
+    CHECK(!checked_cursor_visible);
+}
+
 /* A window with an Edit, a ListBox with a scroll bar, and a Button. */
 typedef struct FineScene {
     TuiDesktop desktop;
@@ -1956,6 +2001,8 @@ void test_mini_keys_suite(void)
                   test_pending_focus_draws_only_what_changes);
     test_run_case("pending redraw: list focus draws one row",
                   test_pending_listbox_focus_draws_one_row);
+    test_run_case("pending redraw: text area focus draws only the cursor",
+                  test_pending_textarea_focus_draws_only_the_cursor);
     test_run_case("pending redraw: list moves draw two rows",
                   test_pending_listbox_moves_draw_two_rows);
     test_run_case("pending redraw: an edit draws what changed",
