@@ -50,15 +50,17 @@
 #define MINI_DOUBLE_CLICK    30     /* 500 ms, como el backend VT de Windows */
 
 /*
- * Lo ultimo que se escribio en cada celda, como (caracter | atributo << 9).
- * La CPU hace ~4,5 MIPS efectivos y cada evento de entrada redibuja las 2400
- * celdas: casi todas con lo mismo que ya tenian. Saltarse esas escrituras --
- * que son accesos MMIO-- es lo que hace usable el teclado y el raton. La copia
- * es del contenido LOGICO: el puntero y el cursor se dibujan encima y no la
- * tocan, asi que una celda igual bajo ellos tampoco se reescribe.
+ * Las celdas se escriben siempre en la RAM de texto, sin mirar si ya tenian eso.
+ * Hubo una copia de la pantalla (mini_shadow, 9600 bytes) para saltarse las
+ * escrituras que no cambiaban nada, con la idea de que un acceso MMIO es caro. Medido
+ * en la placa (make mini-perf) es al reves: una escritura a la RAM de texto cuesta
+ * ~6 ciclos y leer la copia, que es memoria de datos, ~60. Sin ella, por celda y con
+ * lo mismo que ya habia: 147 ciclos en vez de 206; cambiando, 148 en vez de 445.
+ *
+ * Lo que queda por cuidar son el cursor y el puntero, que se dibujan encima del
+ * texto: se ocultan antes de escribir en su celda (mini_overlay_hide_range) y se
+ * vuelven a dibujar al presentar.
  */
-static int mini_shadow[MINI_CELLS];
-
 static int mini_cursor_x;
 static int mini_cursor_y;
 static int mini_cursor_visible;
@@ -182,6 +184,26 @@ static void mini_overlay_hide(void)
 {
     mini_pointer_hide();
     mini_cursor_hide();
+}
+
+/*
+ * Antes de escribir las celdas first..last (indices de la RAM de texto): solo se
+ * oculta lo que esta dentro. Si el puntero y el cursor caen en la misma celda, el
+ * rango las tiene a las dos y se ocultan en el orden de siempre, puntero y cursor.
+ */
+static void mini_overlay_hide_range(int first, int last)
+{
+    if (mini_pointer_drawn &&
+        mini_pointer_cell >= first && mini_pointer_cell <= last)
+        mini_pointer_hide();
+
+    if (mini_cursor_drawn) {
+        int cell;
+
+        cell = mini_cursor_y * MINI_WIDTH + mini_cursor_x;
+        if (cell >= first && cell <= last)
+            mini_cursor_hide();
+    }
 }
 
 static void mini_cursor_show(void)
@@ -497,10 +519,8 @@ int tui_console_init(void)
     /* Downwards, so magenta (5) is written after light magenta (13). */
     for (i = 15; i >= 0; --i)
         MINI_VIDEO_PALETTE[mini_slot[i]] = palette[i];
-    for (i = 0; i < MINI_CELLS; ++i) {
+    for (i = 0; i < MINI_CELLS; ++i)
         MINI_TEXT_RAM[i] = mini_cell(' ', 0x07);
-        mini_shadow[i] = ' ' | (0x07 << 9);
-    }
 
     mini_cursor_x = 0;
     mini_cursor_y = 0;
@@ -544,16 +564,11 @@ int tui_console_height(void)
 void tui_console_cell(int x, int y, int ch, int attr)
 {
     int index;
-    int packed;
 
     if (x < 0 || x >= MINI_WIDTH || y < 0 || y >= MINI_HEIGHT)
         return;
     index = y * MINI_WIDTH + x;
-    packed = (ch & 0x1ff) | ((attr & 0xff) << 9);
-    if (mini_shadow[index] == packed)
-        return;
-    mini_shadow[index] = packed;
-    mini_overlay_hide();
+    mini_overlay_hide_range(index, index);
     MINI_TEXT_RAM[index] = mini_cell(mini_glyph(ch), attr);
 }
 
@@ -561,16 +576,12 @@ void tui_console_cell(int x, int y, int ch, int attr)
  * Tramos de celdas (console.h). Escriben lo mismo que una llamada a tui_console_cell
  * por celda, pero lo que es igual para todo el tramo se paga una vez: los limites de
  * la pantalla, el indice de la fila, el atributo y el glifo (que dan el valor de la
- * celda) y el ocultar el cursor y el puntero, que solo hace falta si alguna celda
- * cambia. Una celda que ya muestra lo que se escribe cuesta comparar con la copia y
- * seguir: unas 8 instrucciones en vez de unas 43 (el resto de la llamada es entrar
- * y salir de la funcion).
+ * celda) y el ocultar el cursor y el puntero. Por celda queda una escritura y el
+ * contador del bucle.
  */
 void tui_console_fill(int x, int y, int n, int ch, int attr)
 {
     int index;
-    int packed;
-    int ready;
     unsigned int value;
 
     if (y < 0 || y >= MINI_HEIGHT)
@@ -585,21 +596,11 @@ void tui_console_fill(int x, int y, int n, int ch, int attr)
         return;
 
     index = y * MINI_WIDTH + x;
-    packed = (ch & 0x1ff) | ((attr & 0xff) << 9);
-    ready = 0;
-    value = 0;
+    mini_overlay_hide_range(index, index + n - 1);
+    value = mini_cell(mini_glyph(ch), attr);
 
-    for (; n > 0; --n, ++index) {
-        if (mini_shadow[index] == packed)
-            continue;
-        mini_shadow[index] = packed;
-        if (!ready) {
-            mini_overlay_hide();
-            value = mini_cell(mini_glyph(ch), attr);
-            ready = 1;
-        }
+    for (; n > 0; --n, ++index)
         MINI_TEXT_RAM[index] = value;
-    }
 }
 
 /*
@@ -610,10 +611,6 @@ void tui_console_fill(int x, int y, int n, int ch, int attr)
 void tui_console_text(int x, int y, const char *text, int n, int attr)
 {
     int index;
-    int packed;
-    int ready;
-    int attr_bits;
-    int c;
     unsigned int base;
 
     if (y < 0 || y >= MINI_HEIGHT)
@@ -629,23 +626,11 @@ void tui_console_text(int x, int y, const char *text, int n, int attr)
         return;
 
     index = y * MINI_WIDTH + x;
-    attr_bits = (attr & 0xff) << 9;
-    ready = 0;
-    base = 0;
+    mini_overlay_hide_range(index, index + n - 1);
+    base = mini_cell(0, attr);
 
-    for (; n > 0; --n, ++index, ++text) {
-        c = *text & 0xff;
-        packed = c | attr_bits;
-        if (mini_shadow[index] == packed)
-            continue;
-        mini_shadow[index] = packed;
-        if (!ready) {
-            mini_overlay_hide();
-            base = mini_cell(0, attr);
-            ready = 1;
-        }
-        MINI_TEXT_RAM[index] = base | (unsigned int)c;
-    }
+    for (; n > 0; --n, ++index, ++text)
+        MINI_TEXT_RAM[index] = base | (unsigned int)(*text & 0xff);
 }
 
 /*

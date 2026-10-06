@@ -4,11 +4,20 @@
  * PERFORMANCE (mmio.md 13.2) y escribe el resultado en la pantalla, que se lee con
  * `monitor.py screen`. No sirve en el simulador (no tiene esos contadores).
  *
- *   A  como esta ahora: cada celda se compara con mini_shadow y, si cambia, se escribe
+ *   A  como era: cada celda se compara con una copia de la pantalla (mini_shadow,
+ *      que ya no existe en console_mini.c; aqui hay una copia local) y, si cambia,
+ *      se escribe
  *   B  como los PC: se escribe en una tabla pendiente y al presentar se compara con
  *      otra que refleja la pantalla (dos tablas)
  *   C  como B, pero al presentar se compara con la RAM de texto, leida (una tabla)
  *   D  sin tabla: cada celda se escribe siempre
+ *   E  la consola tal como esta ahora (tui_console_fill y tui_console_text): como D,
+ *      mas ocultar el cursor y el puntero solo si el tramo los solapa
+ *
+ * Medido en la placa el 6/10/2026, en ciclos por celda (lo mismo / distinto /
+ * espacios y texto): A 206 / 445 / 790, B 344 / 645 / 433, C 377 / 508 / 466,
+ * D 147 / 148 / 244. Una lectura de memoria de datos cuesta ~60 ciclos y una
+ * escritura a la RAM de texto ~6.
  *
  * Tres situaciones, 62 fotogramas de 64 celdas cada una:
  *   1  se repinta lo mismo que ya hay
@@ -36,6 +45,7 @@ typedef void (*FillFn)(int x, int y, int n, int ch, int attr);
 typedef void (*TextFn)(int x, int y, const char *text, int n, int attr);
 typedef void (*PresentFn)(void);
 
+static int shadow[MINI_CELLS];   /* variante A: la copia que tenia console_mini.c */
 static int pend[MINI_CELLS];     /* lo que han escrito los tramos del fotograma */
 static int mirror[MINI_CELLS];   /* lo que tiene la pantalla (variante B) */
 static int dirty_lo;
@@ -63,6 +73,84 @@ static void nop_text(int x, int y, const char *text, int n, int attr)
     (void)text;
     (void)n;
     (void)attr;
+}
+
+/* A: lo que hacia console_mini.c, con su copia de la pantalla. */
+static void shadow_fill(int x, int y, int n, int ch, int attr)
+{
+    int index;
+    int packed;
+    int ready;
+    unsigned int value;
+
+    if (y < 0 || y >= MINI_HEIGHT)
+        return;
+    if (x < 0) {
+        n += x;
+        x = 0;
+    }
+    if (x + n > MINI_WIDTH)
+        n = MINI_WIDTH - x;
+    if (n <= 0)
+        return;
+
+    index = y * MINI_WIDTH + x;
+    packed = (ch & 0x1ff) | ((attr & 0xff) << 9);
+    ready = 0;
+    value = 0;
+
+    for (; n > 0; --n, ++index) {
+        if (shadow[index] == packed)
+            continue;
+        shadow[index] = packed;
+        if (!ready) {
+            mini_overlay_hide();
+            value = mini_cell(mini_glyph(ch), attr);
+            ready = 1;
+        }
+        MINI_TEXT_RAM[index] = value;
+    }
+}
+
+static void shadow_text(int x, int y, const char *text, int n, int attr)
+{
+    int index;
+    int packed;
+    int ready;
+    int attr_bits;
+    int c;
+    unsigned int base;
+
+    if (y < 0 || y >= MINI_HEIGHT)
+        return;
+    if (x < 0) {
+        text -= x;
+        n += x;
+        x = 0;
+    }
+    if (x + n > MINI_WIDTH)
+        n = MINI_WIDTH - x;
+    if (n <= 0)
+        return;
+
+    index = y * MINI_WIDTH + x;
+    attr_bits = (attr & 0xff) << 9;
+    ready = 0;
+    base = 0;
+
+    for (; n > 0; --n, ++index, ++text) {
+        c = *text & 0xff;
+        packed = c | attr_bits;
+        if (shadow[index] == packed)
+            continue;
+        shadow[index] = packed;
+        if (!ready) {
+            mini_overlay_hide();
+            base = mini_cell(0, attr);
+            ready = 1;
+        }
+        MINI_TEXT_RAM[index] = base | (unsigned int)c;
+    }
 }
 
 /* B y C: el tramo solo anota en la tabla pendiente, ya con el valor del hardware. */
@@ -258,6 +346,11 @@ static void reset_row(void)
         mirror[index] = pend[index];
     }
 
+    /* The copy of variant A, for the cells the scenarios write. */
+    for (x = 0; x < MINI_WIDTH; ++x)
+        shadow[ROW * MINI_WIDTH + x] =
+            (x < RUN ? (text_a[x] & 0xff) : ' ') | (7 << 9);
+
     dirty_lo = MINI_CELLS;
     dirty_hi = -1;
 }
@@ -331,21 +424,23 @@ int main(void)
     text_a[RUN] = '\0';
     text_b[RUN] = '\0';
 
-    /* Only to have the column titles; the measures overwrite their own rows. */
     row = 10;
     measure(row++, "none 1", 1, nop_fill, nop_text, nop_present);
-    measure(row++, "A 1 same", 1, tui_console_fill, tui_console_text, nop_present);
+    measure(row++, "A 1 same", 1, shadow_fill, shadow_text, nop_present);
     measure(row++, "B 1 same", 1, pend_fill, pend_text, present_two_tables);
     measure(row++, "C 1 same", 1, pend_fill, pend_text, present_read_ram);
     measure(row++, "D 1 same", 1, raw_fill, raw_text, nop_present);
-    measure(row++, "A 2 chang", 2, tui_console_fill, tui_console_text, nop_present);
+    measure(row++, "E 1 same", 1, tui_console_fill, tui_console_text, nop_present);
+    measure(row++, "A 2 chang", 2, shadow_fill, shadow_text, nop_present);
     measure(row++, "B 2 chang", 2, pend_fill, pend_text, present_two_tables);
     measure(row++, "C 2 chang", 2, pend_fill, pend_text, present_read_ram);
     measure(row++, "D 2 chang", 2, raw_fill, raw_text, nop_present);
-    measure(row++, "A 3 pingp", 3, tui_console_fill, tui_console_text, nop_present);
+    measure(row++, "E 2 chang", 2, tui_console_fill, tui_console_text, nop_present);
+    measure(row++, "A 3 pingp", 3, shadow_fill, shadow_text, nop_present);
     measure(row++, "B 3 pingp", 3, pend_fill, pend_text, present_two_tables);
     measure(row++, "C 3 pingp", 3, pend_fill, pend_text, present_read_ram);
     measure(row++, "D 3 pingp", 3, raw_fill, raw_text, nop_present);
+    measure(row++, "E 3 pingp", 3, tui_console_fill, tui_console_text, nop_present);
 
     put_text(0, 8, "cycles instr stallmem stallmmio, per cell x10");
 

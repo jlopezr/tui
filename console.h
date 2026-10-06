@@ -122,7 +122,7 @@ void tui_console_cell(int x, int y, int ch, int attr);
  * The same thing for a run of cells in one row, so that what costs the same for
  * every cell of the run is paid once: the screen bounds, the attribute, the glyph,
  * the call. On the MiniCPU that is most of what a cell costs (about 43 instructions
- * when it already shows what is written, against about 8 in a run).
+ * for a call to tui_console_cell, against about 11 per cell in a run).
  *
  *   tui_console_fill()  n cells from (x, y) with the same character, which may be an
  *                       abstract one (TUI_CH_*).
