@@ -1027,7 +1027,7 @@ static void editor_draw(TuiControl *control, TuiDraw *draw)
                     break;
 
                 for (i = 0; i < n; ++i)
-                    tui_putc(draw, col + i, row, buf[i] & 0xff, attr);
+                    tui_putc(draw, col + i, row, (unsigned char)buf[i], attr);
 
                 col += n;
                 index += n;

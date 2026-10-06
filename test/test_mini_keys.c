@@ -1214,6 +1214,181 @@ static void test_pending_listbox_focus_draws_one_row(void)
     paint_and_check(&desktop);
 }
 
+/* A window with an Edit, a ListBox with a scroll bar, and a Button. */
+typedef struct FineScene {
+    TuiDesktop desktop;
+    TuiWindow window;
+    TuiEdit edit;
+    TuiListBox list;
+    TuiButton button;
+    char buffer[40];
+} FineScene;
+
+static void fine_scene_build(FineScene *s)
+{
+    static const char *items[] = {
+        "Apple", "Banana", "Orange", "Peach", "Pear", "Cherry",
+        "Lemon", "Mango", "Plum", "Fig", "Lime", "Date"
+    };
+
+    test_init_desktop(&s->desktop);
+    strcpy(s->buffer, "The quick brown fox jumps over it");
+    tui_window_init(&s->window, 2, 2, 44, 14, "Fine");
+    tui_edit_init(&s->edit, 0, 0, 20, s->buffer, 40);
+    tui_listbox_init(&s->list, 0, 2, 20, 8, items, 12);
+    tui_button_init(&s->button, 24, 2, 10, "OK", 78);
+    tui_add(&s->window.control, &s->edit.control);
+    tui_add(&s->window.control, &s->list.control);
+    tui_add(&s->window.control, &s->button.control);
+    tui_add(&s->desktop.control, &s->window.control);
+    tui_desktop_set_focus(&s->desktop, &s->list.control);
+    tui_draw(&s->desktop);
+}
+
+/* Moving the selection of a list repaints the two rows, or all of it if it scrolls. */
+static void test_pending_listbox_moves_draw_two_rows(void)
+{
+    static FineScene s;
+    int written;
+    int i;
+
+    fine_scene_build(&s);
+
+    test_key(&s.desktop, TUI_KEY_DOWN);
+    CHECK(!s.desktop.dirty_all);
+    written = paint_and_check(&s.desktop);
+    /* Two rows, each with the background, the selection bar and the text. */
+    CHECK(written >= 2 && written <= 2 * (2 * 19 + 8));
+
+    /* A click on a row. */
+    test_mouse_down(&s.desktop, 3 + 2, 5 + 5);
+    CHECK(!s.desktop.dirty_all);
+    written = paint_and_check(&s.desktop);
+    CHECK(written >= 2 && written <= 2 * (2 * 19 + 8));
+
+    /* A click on the row that is already selected, and a key that changes nothing. */
+    test_mouse_down(&s.desktop, 3 + 2, 5 + 5);
+    CHECK(!s.desktop.dirty_all);
+    written = paint_and_check(&s.desktop);
+    CHECK(written == 0);
+    tui_listbox_set_selected(&s.list, 0);
+    paint_and_check(&s.desktop);
+    test_key(&s.desktop, TUI_KEY_UP);
+    written = paint_and_check(&s.desktop);
+    CHECK(written == 0);
+    test_key(&s.desktop, '#');
+    written = paint_and_check(&s.desktop);
+    CHECK(written == 0);
+
+    /* Going past the last visible row scrolls: the whole list. */
+    for (i = 0; i < 9; ++i)
+        test_key(&s.desktop, TUI_KEY_DOWN);
+    CHECK(s.list.offset > 0);
+    paint_and_check(&s.desktop);
+}
+
+/* Typing in an Edit repaints from the column that changed; moving, one cell. */
+static void test_pending_edit_draws_what_changed(void)
+{
+    static FineScene s;
+    int written;
+    int i;
+
+    fine_scene_build(&s);
+    tui_desktop_set_focus(&s.desktop, &s.edit.control);
+    paint_and_check(&s.desktop);
+
+    test_key(&s.desktop, TUI_KEY_HOME);
+    CHECK(!s.desktop.dirty_all);
+    paint_and_check(&s.desktop);
+    CHECK(checked_cursor_visible);
+    test_key(&s.desktop, TUI_KEY_RIGHT);
+    written = paint_and_check(&s.desktop);
+    CHECK(written >= 1 && written <= 4);
+    CHECK(checked_cursor_x == 3 + 1);
+
+    /* Nothing changes: nothing is painted. */
+    test_key(&s.desktop, TUI_KEY_HOME);
+    paint_and_check(&s.desktop);
+    test_key(&s.desktop, TUI_KEY_LEFT);
+    CHECK(!s.desktop.dirty_all);
+    written = paint_and_check(&s.desktop);
+    CHECK(written == 0);
+
+    /* A letter: from the cursor to the right edge, not the cells before it. */
+    for (i = 0; i < 10; ++i)
+        test_key(&s.desktop, TUI_KEY_RIGHT);
+    paint_and_check(&s.desktop);
+    test_key(&s.desktop, 'z');
+    CHECK(!s.desktop.dirty_all);
+    written = paint_and_check(&s.desktop);
+    CHECK(written >= 2 && written <= 2 * 10);
+
+    test_key(&s.desktop, TUI_KEY_BACKSPACE);
+    written = paint_and_check(&s.desktop);
+    CHECK(written >= 2 && written <= 2 * 11);
+
+    /* A click in the text. */
+    test_mouse_down(&s.desktop, 3 + 4, 3);
+    CHECK(!s.desktop.dirty_all);
+    written = paint_and_check(&s.desktop);
+    CHECK(written >= 1 && written <= 4);
+
+    /* The text scrolls: it is drawn whole. */
+    test_key(&s.desktop, TUI_KEY_END);
+    CHECK(s.edit.offset > 0);
+    paint_and_check(&s.desktop);
+
+    /* The focus: the cursor cell only. */
+    tui_desktop_set_focus(&s.desktop, &s.button.control);
+    CHECK(!s.desktop.dirty_all);
+    paint_and_check(&s.desktop);
+    CHECK(!checked_cursor_visible);
+    tui_desktop_set_focus(&s.desktop, &s.edit.control);
+    paint_and_check(&s.desktop);
+    CHECK(checked_cursor_visible);
+}
+
+/* The Edit and the ListBox under random events: always what a full redraw gives. */
+static void test_pending_edit_and_listbox_random_events(void)
+{
+    static FineScene s;
+    unsigned int seed;
+    int step;
+    int r;
+
+    fine_scene_build(&s);
+    seed = 987u;
+
+    for (step = 0; step < 1500; ++step) {
+        seed = seed * 1103515245u + 12345u;
+        r = (int)((seed >> 16) & 0x7fff) % 22;
+
+        if (r < 6) {
+            static const int keys[] = {
+                TUI_KEY_UP, TUI_KEY_DOWN, TUI_KEY_LEFT, TUI_KEY_RIGHT,
+                TUI_KEY_HOME, TUI_KEY_END
+            };
+            test_key(&s.desktop, keys[r]);
+        } else if (r < 8) {
+            test_key(&s.desktop, r == 6 ? TUI_KEY_PAGEUP : TUI_KEY_PAGEDOWN);
+        } else if (r < 10) {
+            test_key(&s.desktop, r == 8 ? TUI_KEY_BACKSPACE : TUI_KEY_DELETE);
+        } else if (r < 14) {
+            test_key(&s.desktop, 'a' + (int)((seed >> 8) % 26u));
+        } else if (r < 16) {
+            test_key(&s.desktop, TUI_KEY_TAB);
+        } else if (r < 18) {
+            test_key(&s.desktop, TUI_KEY_ENTER);
+        } else {
+            test_mouse_down(&s.desktop, 3 + (int)((seed >> 4) % 22u),
+                            3 + (int)((seed >> 12) % 11u));
+        }
+
+        paint_and_check(&s.desktop);
+    }
+}
+
 /* A small editor with both scroll bars and a long text, hit with random events. */
 static void test_pending_editor_random_events(void)
 {
@@ -1781,6 +1956,12 @@ void test_mini_keys_suite(void)
                   test_pending_focus_draws_only_what_changes);
     test_run_case("pending redraw: list focus draws one row",
                   test_pending_listbox_focus_draws_one_row);
+    test_run_case("pending redraw: list moves draw two rows",
+                  test_pending_listbox_moves_draw_two_rows);
+    test_run_case("pending redraw: an edit draws what changed",
+                  test_pending_edit_draws_what_changed);
+    test_run_case("pending redraw: edit and list under random events",
+                  test_pending_edit_and_listbox_random_events);
     test_run_case("pending redraw: the editor under random events",
                   test_pending_editor_random_events);
     test_run_case("pending redraw: combo opened from another window",

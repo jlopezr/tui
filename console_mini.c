@@ -107,16 +107,20 @@ static const unsigned char mini_slot[16] = {
 };
 
 /*
- * El caracter se enmascara con `& 0xff` y NO con `(unsigned char)`: mini-lcc
- * compila ese cast sobre un `int` como un no-op, asi que un char con signo
- * (la enie, 0xA4, leida de un buffer) llegaba como 0xFFFFFFA4 y la RAM de texto
- * rechazaba la escritura con un error de MMIO. Con solo ASCII no se notaba.
+ * El caracter se reduce a un byte con `(unsigned char)`: un char con signo
+ * (la enie, 0xA4, leida de un buffer) llega como 0xFFFFFFA4, y la RAM de texto
+ * rechaza la escritura con un error de MMIO. Con solo ASCII no se notaba.
+ *
+ * Es el cast y no `& 0xff` a proposito. Hasta que se corrigio el backend,
+ * mini-lcc compilaba ese cast sobre un `int` como un no-op, y con `& 0xff`
+ * ese fallo del compilador quedaba tapado. Asi, si vuelve, la demo se para con
+ * el error de MMIO en vez de funcionar por casualidad.
  */
 static unsigned int mini_cell(int ch, int attr)
 {
     return ((unsigned int)mini_slot[attr & 0x0f] << 8) |
            ((unsigned int)mini_slot[(attr >> 4) & 0x0f] << 12) |
-           (unsigned int)(ch & 0xff);
+           (unsigned int)(unsigned char)ch;
 }
 
 static int mini_glyph(int ch)

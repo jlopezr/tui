@@ -2,12 +2,14 @@
 
 static void edit_draw(TuiControl *control, TuiDraw *draw);
 static int edit_event(TuiControl *control, TuiEvent *event);
+static void edit_focus_changed(TuiControl *control);
 
 static const TuiClass edit_class = {
     edit_draw,
     edit_event,
     0,
-    TUI_CLASS_OPAQUE
+    TUI_CLASS_OPAQUE,
+    edit_focus_changed
 };
 
 /*
@@ -49,7 +51,9 @@ void tui_edit_init(TuiEdit *edit,
 
     edit->length = len;
     edit->cursor = len;
-    edit->offset = 0;
+
+    /* The cursor starts at the end of the text: scroll so that it is in view. */
+    edit->offset = width > 0 && len >= width ? len - width + 1 : 0;
 }
 
 static void edit_draw(TuiControl *control,
@@ -192,17 +196,65 @@ static void edit_ensure_cursor_visible(TuiEdit *edit)
 
 static int edit_handle(TuiControl *control, TuiEvent *event);
 
-/* Whatever the control handled may have changed what it shows. */
+/*
+ * The focus moved onto or off the edit. The cursor is the only thing that looks
+ * different (edit_draw asks for it while the edit has the focus), so the cell it is
+ * on is all there is to draw.
+ */
+static void edit_focus_changed(TuiControl *control)
+{
+    TuiEdit *edit;
+    int x;
+
+    edit = (TuiEdit *)control;
+    x = edit->cursor - edit->offset;
+
+    if (x >= 0 && x < control->width)
+        tui_invalidate_rect(control, x, 0, 1, 1);
+    else
+        tui_invalidate(control);
+}
+
+/*
+ * Reports to the desktop what the event changed, and no more:
+ *
+ *   the text scrolled                       all of it
+ *   a character was typed or deleted        from the first column that changed
+ *   only the cursor moved                   the cell it is on
+ */
 static int edit_event(TuiControl *control, TuiEvent *event)
 {
+    TuiEdit *edit;
+    int offset;
+    int length;
+    int cursor;
     int handled;
+    int x;
+
+    edit = (TuiEdit *)control;
+    offset = edit->offset;
+    length = edit->length;
+    cursor = edit->cursor;
 
     handled = edit_handle(control, event);
 
-    if (handled)
-        tui_invalidate(control);
+    if (!handled)
+        return 0;
 
-    return handled;
+    x = edit->cursor - edit->offset;
+
+    if (edit->offset != offset || x < 0 || x >= control->width) {
+        tui_invalidate(control);
+    } else if (edit->length != length) {
+        x = tui_max(0, tui_min(cursor, edit->cursor) - edit->offset);
+        tui_invalidate_rect(control, x, 0, control->width - x, 1);
+    } else if (edit->cursor != cursor) {
+        tui_invalidate_rect(control, x, 0, 1, 1);
+    } else {
+        tui_event_done(control);
+    }
+
+    return 1;
 }
 
 static int edit_handle(TuiControl *control, TuiEvent *event)

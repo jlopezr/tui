@@ -388,10 +388,13 @@ una y `tui_add` de otra. `demo.c` lo hace así.
   pulsación un doble clic que nadie gestionó, y el menú y la lista de un combo, que
   reciben el ratón por captura, lo tratan como pulsación ellos mismos.
 
-**Trampa de `mini-lcc`**: `(unsigned char)x` sobre un `int` no enmascara. Un
+**`char` con signo en `mini-lcc`**: `char` es con signo, como en C, así que un
 carácter ≥128 leído de un buffer de `char` llega con el signo extendido
-(`0xFFFFFFA4`) y la RAM de texto lo rechaza con un error de MMIO. En
-`console_mini.c` se enmascara con `& 0xff`.
+(`0xFFFFFFA4`) y la RAM de texto lo rechaza con un error de MMIO. Hay que
+convertirlo: `(unsigned char)c`, o `& 0xff`, que es lo que hace `console_mini.c`.
+Hasta que se corrigió el backend, `(unsigned char)x` sobre un `int` **no
+enmascaraba** (ni `(short)`, `(signed char)`… extendían el signo); un `rcc`
+anterior a esa corrección sigue dando ese resultado.
 
 La pila de arranque de `mini-lcc` es de 8 KiB: las estructuras grandes no pueden
 ser locales de `main` (por eso `App` es `static` en `demo.c`). Si la pila se

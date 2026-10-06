@@ -223,14 +223,9 @@ int tui_listbox_get_selected(TuiListBox *list)
     return list->selected;
 }
 
-void tui_listbox_set_selected(TuiListBox *list,
-                              int index)
+/* Selects a row without telling the desktop; the callers do that. */
+static void listbox_select(TuiListBox *list, int index)
 {
-    if (list == 0)
-        return;
-
-    tui_invalidate(&list->control);
-
     if (list->count <= 0) {
         list->selected = -1;
         list->offset = 0;
@@ -245,6 +240,16 @@ void tui_listbox_set_selected(TuiListBox *list,
 
     list->selected = index;
     listbox_ensure_selected_visible(list);
+}
+
+void tui_listbox_set_selected(TuiListBox *list,
+                              int index)
+{
+    if (list == 0)
+        return;
+
+    tui_invalidate(&list->control);
+    listbox_select(list, index);
 }
 
 void tui_listbox_set_command(TuiListBox *list,
@@ -400,17 +405,53 @@ static void listbox_focus_changed(TuiControl *control)
 
 static int listbox_handle(TuiControl *control, TuiEvent *event);
 
-/* Whatever the control handled may have changed what it shows. */
+static void listbox_invalidate_row(TuiListBox *list, int index)
+{
+    int row;
+
+    row = index - list->offset;
+
+    if (index >= 0 && row >= 0 && row < list->control.height)
+        tui_invalidate_rect(&list->control, 0, row,
+                            listbox_content_width(list), 1);
+}
+
+/*
+ * Reports to the desktop what the event changed, and no more:
+ *
+ *   the list scrolled (or its scroll bar came or went)   all of it
+ *   the selection moved within the view                  the two rows involved
+ *   nothing                                              nothing
+ */
 static int listbox_event(TuiControl *control, TuiEvent *event)
 {
+    TuiListBox *list;
+    int selected;
+    int offset;
+    int scroll;
     int handled;
+
+    list = (TuiListBox *)control;
+    selected = list->selected;
+    offset = list->offset;
+    scroll = (list->scrollbar.control.flags & TUI_VISIBLE) != 0;
 
     handled = listbox_handle(control, event);
 
-    if (handled)
-        tui_invalidate(control);
+    if (!handled)
+        return 0;
 
-    return handled;
+    if (list->offset != offset ||
+        ((list->scrollbar.control.flags & TUI_VISIBLE) != 0) != scroll) {
+        tui_invalidate(control);
+    } else if (list->selected != selected) {
+        listbox_invalidate_row(list, selected);
+        listbox_invalidate_row(list, list->selected);
+    } else {
+        tui_event_done(control);
+    }
+
+    return 1;
 }
 
 static int listbox_handle(TuiControl *control, TuiEvent *event)
@@ -443,7 +484,7 @@ static int listbox_handle(TuiControl *control, TuiEvent *event)
         index = list->offset + local_y;
 
         if (index >= 0 && index < list->count) {
-            tui_listbox_set_selected(list, index);
+            listbox_select(list, index);
 
             if (event->mouse_action == TUI_MOUSE_DOUBLE) {
                 listbox_activate(list, control, event);
