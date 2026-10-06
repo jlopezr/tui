@@ -1,5 +1,6 @@
 CC = cl
-CFLAGS = /nologo /TC /W4 /D_CRT_SECURE_NO_WARNINGS
+OBJDIR = _build\obj
+CFLAGS = /nologo /Fo$(OBJDIR)\ /TC /W4 /D_CRT_SECURE_NO_WARNINGS
 TARGET = demo-win32.exe
 VT_TARGET = demo-vt-win32.exe
 PROFILE_TARGET = profile-vt-win32.exe
@@ -24,20 +25,24 @@ all: $(TARGET)
 
 $(TARGET): demo.c console_win32.c console_dirty.c $(TUI_SRC) \
 	tui.h tui_internal.h console.h console_dirty.h
+	@if not exist $(OBJDIR) mkdir $(OBJDIR)
 	$(CC) $(CFLAGS) /Fe$@ demo.c console_win32.c console_dirty.c $(TUI_SRC)
 
 $(VT_TARGET): demo.c console_vt_win32.c console_dirty.c \
 	$(TUI_SRC) tui.h tui_internal.h console.h console_dirty.h
+	@if not exist $(OBJDIR) mkdir $(OBJDIR)
 	$(CC) $(CFLAGS) /Fe$@ demo.c console_vt_win32.c console_dirty.c $(TUI_SRC)
 
 vt: $(VT_TARGET)
 
 $(PROFILE_TARGET): profile_render.c console_vt_win32.c console_dirty.c console.h \
 	console_dirty.h
+	@if not exist $(OBJDIR) mkdir $(OBJDIR)
 	$(CC) $(CFLAGS) /Fe$@ profile_render.c console_vt_win32.c console_dirty.c
 
 $(PROFILE_FULL_TARGET): profile_render.c console_vt_win32.c console_dirty.c \
 	console.h console_dirty.h
+	@if not exist $(OBJDIR) mkdir $(OBJDIR)
 	$(CC) $(CFLAGS) /DTUI_PROFILE_FULL /Fe$@ \
 		profile_render.c console_vt_win32.c console_dirty.c
 
@@ -47,6 +52,7 @@ profile: $(PROFILE_TARGET) $(PROFILE_FULL_TARGET)
 
 $(TEST_TARGET): $(TEST_SRC) $(TUI_SRC) tui.h tui_internal.h console.h \
 	test\test_support.h
+	@if not exist $(OBJDIR) mkdir $(OBJDIR)
 	$(CC) $(CFLAGS) /I. /Fe$@ $(TEST_SRC) $(TUI_SRC)
 
 test: $(TEST_TARGET)
@@ -97,5 +103,5 @@ mini-run: $(MINI_BIN)
 
 clean:
 	-del /q $(TARGET) $(VT_TARGET) $(PROFILE_TARGET) \
-		$(PROFILE_FULL_TARGET) $(TEST_TARGET) *.obj 2>NUL
+		$(PROFILE_FULL_TARGET) $(TEST_TARGET) *.obj $(OBJDIR)\*.obj 2>NUL
 	-del /q _build\tui_mini.s _build\tui_mini.bin _build\keys.bin _build\screen.txt 2>NUL
