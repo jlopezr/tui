@@ -1062,8 +1062,7 @@ static void tui_dirty_add(TuiDesktop *desktop,
                           int x1, int y1, int x2, int y2)
 {
     int i;
-    int j;
-    int kept;
+    int *r;
     int best;
     int best_area;
     int area;
@@ -1077,6 +1076,39 @@ static void tui_dirty_add(TuiDesktop *desktop,
     if (desktop->dirty_all)
         return;
 
+static int tui_rect_covers(const int *r, int x1, int y1, int x2, int y2)
+{
+    return r[0] <= x1 && r[1] <= y1 && r[2] >= x2 && r[3] >= y2;
+}
+
+static void tui_rect_copy(int *to, const int *from)
+{
+    to[0] = from[0];
+    to[1] = from[1];
+    to[2] = from[2];
+    to[3] = from[3];
+}
+
+/* Removes from a list of rectangles (stride 4) the ones inside the given one. */
+static void tui_rects_drop_covered(int *rects, int *count,
+                                   int x1, int y1, int x2, int y2)
+{
+    int i;
+    int kept;
+
+    kept = 0;
+    for (i = 0; i < *count; ++i) {
+        if (x1 <= rects[i * 4] && y1 <= rects[i * 4 + 1] &&
+            x2 >= rects[i * 4 + 2] && y2 >= rects[i * 4 + 3])
+            continue;
+
+        if (kept != i)
+            tui_rect_copy(&rects[kept * 4], &rects[i * 4]);
+        ++kept;
+    }
+    *count = kept;
+}
+
     x1 = tui_max(x1, 0);
     y1 = tui_max(y1, 0);
     x2 = tui_min(x2, desktop->control.width);
@@ -1087,8 +1119,7 @@ static void tui_dirty_add(TuiDesktop *desktop,
 
     /* Already covered by something we are going to draw. */
     for (i = 0; i < desktop->dirty_count; ++i) {
-        if (desktop->dirty[i][0] <= x1 && desktop->dirty[i][1] <= y1 &&
-            desktop->dirty[i][2] >= x2 && desktop->dirty[i][3] >= y2)
+        if (tui_rect_covers(desktop->dirty[i], x1, y1, x2, y2))
             return;
     }
 
@@ -1102,25 +1133,22 @@ static void tui_dirty_add(TuiDesktop *desktop,
      */
     i = 0;
     while (i < desktop->dirty_count) {
-        ux1 = tui_min(x1, desktop->dirty[i][0]);
-        uy1 = tui_min(y1, desktop->dirty[i][1]);
-        ux2 = tui_max(x2, desktop->dirty[i][2]);
-        uy2 = tui_max(y2, desktop->dirty[i][3]);
+        r = desktop->dirty[i];
+        ux1 = tui_min(x1, r[0]);
+        uy1 = tui_min(y1, r[1]);
+        ux2 = tui_max(x2, r[2]);
+        uy2 = tui_max(y2, r[3]);
 
-        if (x1 < desktop->dirty[i][2] && desktop->dirty[i][0] < x2 &&
-            y1 < desktop->dirty[i][3] && desktop->dirty[i][1] < y2 &&
+        if (x1 < r[2] && r[0] < x2 && y1 < r[3] && r[1] < y2 &&
             (ux2 - ux1) * (uy2 - uy1) <=
-                (x2 - x1) * (y2 - y1) +
-                (desktop->dirty[i][2] - desktop->dirty[i][0]) *
-                (desktop->dirty[i][3] - desktop->dirty[i][1])) {
+                (x2 - x1) * (y2 - y1) + (r[2] - r[0]) * (r[3] - r[1])) {
             x1 = ux1;
             y1 = uy1;
             x2 = ux2;
             y2 = uy2;
 
             --desktop->dirty_count;
-            for (j = 0; j < 4; ++j)
-                desktop->dirty[i][j] = desktop->dirty[desktop->dirty_count][j];
+            tui_rect_copy(r, desktop->dirty[desktop->dirty_count]);
 
             i = 0;
         } else {
@@ -1128,35 +1156,14 @@ static void tui_dirty_add(TuiDesktop *desktop,
         }
     }
 
-    /* The new one swallows the ones it covers, which frees their slots. */
-    kept = 0;
-    for (i = 0; i < desktop->dirty_count; ++i) {
-        if (x1 <= desktop->dirty[i][0] && y1 <= desktop->dirty[i][1] &&
-            x2 >= desktop->dirty[i][2] && y2 >= desktop->dirty[i][3])
-            continue;
-
-        if (kept != i) {
-            for (j = 0; j < 4; ++j)
-                desktop->dirty[kept][j] = desktop->dirty[i][j];
-        }
-        ++kept;
-    }
-    desktop->dirty_count = kept;
-
-    /* A frame inside the new rectangle is repainted with it anyway. */
-    kept = 0;
-    for (i = 0; i < desktop->frame_count; ++i) {
-        if (x1 <= desktop->frames[i][0] && y1 <= desktop->frames[i][1] &&
-            x2 >= desktop->frames[i][2] && y2 >= desktop->frames[i][3])
-            continue;
-
-        if (kept != i) {
-            for (j = 0; j < 4; ++j)
-                desktop->frames[kept][j] = desktop->frames[i][j];
-        }
-        ++kept;
-    }
-    desktop->frame_count = kept;
+    /*
+     * The new one swallows the ones it covers, which frees their slots; a frame
+     * inside it is repainted with it anyway.
+     */
+    tui_rects_drop_covered(&desktop->dirty[0][0], &desktop->dirty_count,
+                           x1, y1, x2, y2);
+    tui_rects_drop_covered(&desktop->frames[0][0], &desktop->frame_count,
+                           x1, y1, x2, y2);
 
     /*
      * No room: grow the rectangle that would grow the least to take this one.
@@ -1169,10 +1176,9 @@ static void tui_dirty_add(TuiDesktop *desktop,
         best_area = -1;
 
         for (i = 0; i < desktop->dirty_count; ++i) {
-            area = (tui_max(x2, desktop->dirty[i][2]) -
-                    tui_min(x1, desktop->dirty[i][0])) *
-                   (tui_max(y2, desktop->dirty[i][3]) -
-                    tui_min(y1, desktop->dirty[i][1]));
+            r = desktop->dirty[i];
+            area = (tui_max(x2, r[2]) - tui_min(x1, r[0])) *
+                   (tui_max(y2, r[3]) - tui_min(y1, r[1]));
 
             if (best_area < 0 || area < best_area) {
                 best_area = area;
@@ -1180,18 +1186,19 @@ static void tui_dirty_add(TuiDesktop *desktop,
             }
         }
 
-        desktop->dirty[best][0] = tui_min(x1, desktop->dirty[best][0]);
-        desktop->dirty[best][1] = tui_min(y1, desktop->dirty[best][1]);
-        desktop->dirty[best][2] = tui_max(x2, desktop->dirty[best][2]);
-        desktop->dirty[best][3] = tui_max(y2, desktop->dirty[best][3]);
+        r = desktop->dirty[best];
+        r[0] = tui_min(x1, r[0]);
+        r[1] = tui_min(y1, r[1]);
+        r[2] = tui_max(x2, r[2]);
+        r[3] = tui_max(y2, r[3]);
         return;
     }
 
-    desktop->dirty[desktop->dirty_count][0] = x1;
-    desktop->dirty[desktop->dirty_count][1] = y1;
-    desktop->dirty[desktop->dirty_count][2] = x2;
-    desktop->dirty[desktop->dirty_count][3] = y2;
-    ++desktop->dirty_count;
+    r = desktop->dirty[desktop->dirty_count++];
+    r[0] = x1;
+    r[1] = y1;
+    r[2] = x2;
+    r[3] = y2;
 }
 
 void tui_invalidate_rect(TuiControl *control,
